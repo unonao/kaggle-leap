@@ -1,0 +1,4 @@
+seed: 7
+
+shard_size_m: 50
+break_n_months: 1

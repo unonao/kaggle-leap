@@ -1,3 +1,7 @@
 input_dir: /kaggle/working/input
 output_dir: /kaggle/working/output
 exp_dir: /kaggle/working/output/experiments
+preprocess_dir: /kaggle/working/output/preprocess
+
+gcs_bucket: kaggle-leap
+gcs_base_dir: kami

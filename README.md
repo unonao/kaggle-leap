@@ -1,5 +1,11 @@
 # Kaggle テンプレート
 
+gscfuseの自動マウント(/etc/fstab に追記)
+```
+kaggle-leap /home/naoki.a.murakami/kaggle-leap/output gcsfuse rw,file_mode=777,dir_mode=777,allow_other,_netdev,only_dir=kami,rename_dir_limit=20
+```
+
+
 ## 特徴
 - Docker によるポータブルなKaggleと同一の環境
 - Hydra による実験管理
