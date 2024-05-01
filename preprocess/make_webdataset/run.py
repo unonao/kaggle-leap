@@ -517,7 +517,7 @@ def make_webdataset_month(
         for input_path in pbar:
             input_data, output_data = data_utils.gen(input_path)
             input_path = Path(input_path)
-            file_name_text = input_path.name
+            file_name_text = input_path.stem.split(".")[-1]
 
             for i in range(len(input_data)):
                 write_obj = {
@@ -537,7 +537,9 @@ def make_webdataset_month(
         )
 
     # Upload
-    gcs_path = str(Path(cfg.dir.gcs_base_dir) / exp_name / shard_path.name)
+    gcs_path = str(
+        Path(cfg.dir.gcs_base_dir) / "preprocess" / exp_name / shard_path.name
+    )
     print(f"{gcs_path=}")
     upload_directory_to_gcs(
         shard_path,
@@ -573,7 +575,7 @@ def make_webdataset(cfg: DictConfig, exp_name) -> None:
     if cfg.exp.break_n_months:
         month_dirs = month_dirs[: cfg.exp.break_n_months]
     if cfg.debug:
-        month_dirs = month_dirs[:1]
+        month_dirs = month_dirs[:1] + month_dirs[-1:]
 
     for month_dir in month_dirs:
         print(f"Processing {month_dir}")

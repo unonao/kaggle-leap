@@ -1,0 +1,40 @@
+seed: 7
+
+modes: [train, predict]
+dataset_dir: preprocess/make_webdataset/all
+scale_dir: output/preprocess/stats_for_norm/base
+test_path: input/test.parquet
+sample_submission_path: input/sample_submission.parquet
+
+data_skip_mod: 100
+
+# model
+model:
+  input_size: 556
+  hidden_sizes : [256, 256, 256]
+  output_size: 368
+
+# Training
+num_workers: 8
+train_batch_size: 4000
+valid_batch_size: 4000
+max_epochs: 10
+early_stopping_patience: 2
+
+# trainer
+accelerator: auto
+precision: "32" # https://lightning.ai/docs/pytorch/stable/common/trainer.html#precision
+gradient_clip_val: 1.0
+accumulate_grad_batches: 1
+check_val_every_n_epoch: 1
+
+# LightningModule
+lr: 1e-3
+monitor: valid_loss
+monitor_mode: min
+scheduler:
+  use_one_epoch_warmup: False
+
+ema:
+  use_ema: True
+  decay: 0.9975
