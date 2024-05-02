@@ -484,11 +484,10 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
         if cfg.debug:
             break
 
-    preds = torch.cat(preds).numpy()
-    preds = Scaler(cfg).inv_scale_output(preds)
+    _preds = torch.cat(preds).numpy()
+    preds = Scaler(cfg).inv_scale_output(_preds)
     print(type(preds), preds.shape)
     labels = torch.cat(labels).numpy()
-
     predict_df = pd.DataFrame(
         preds, columns=[i for i in range(preds.shape[1])]
     ).reset_index()
@@ -497,9 +496,31 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
     ).reset_index()
 
     r2_scores = score(label_df, predict_df, "index", multioutput="raw_values")
-    print(f"{r2_scores=}")
+
     r2_score = float(r2_scores.mean())
+    if r2_score < -100:
+        nonzero_idx = np.nonzero(r2_scores == np.min(r2_scores))
+        print(nonzero_idx)
+        ri = nonzero_idx[0][0]  # 代表して最初だけ
+        # ri 列目について、mseが最大のindexを取得
+        mse = (preds[:, ri] - labels[:, ri]) ** 2
+        base = (labels[:, ri] - labels[:, ri].mean()) ** 2
+        mse_index = np.nonzero(mse == np.max(mse))[0][0]
+        i = mse_index
+        j = ri
+        print(f"{i=}, {j=}")
+        print(f"{r2_scores[ri]=}, {mse.mean()=}, {mse[mse_index]=}, {base.mean()=}")
+        print(
+            f"{_preds[i,j]=},{_preds[:,j].mean()=}, {_preds[:,j].max()=}, {_preds[:,j].min()=}"
+        )
+        print(
+            f"{preds[i,j]=}, {preds[:,j].mean()=}, {preds[:,j].max()=}, {preds[:,j].min()=}"
+        )
+        print(
+            f"{labels[i,j]=}, {labels[:,j].mean()=}, {labels[:,j].max()=}, {labels[:,j].min()=}"
+        )
     print(f"{r2_score=}")
+
     wandb.log({f"r2_score/{valid_name}": r2_score})
     """
     # weighted
@@ -584,7 +605,7 @@ def main(cfg: DictConfig) -> None:
     pl_logger = WandbLogger(
         name=exp_name,
         project="kaggle-leap",
-        mode="disabled" if cfg.debug else None,
+        mode="disabled",  # if cfg.debug else None,
     )
     pl_logger.log_hyperparams(cfg)
 

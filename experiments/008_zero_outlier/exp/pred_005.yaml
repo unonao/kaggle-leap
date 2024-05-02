@@ -1,0 +1,5 @@
+defaults:
+  - 005@_here_ # ベースの設定ファイルを指定する
+
+modes: [valid]
+pred_checkpoint_path: output/experiments/008_zero_outlier/005/checkpoints/best_model.ckpt
