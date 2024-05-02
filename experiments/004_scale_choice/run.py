@@ -45,30 +45,41 @@ def get_valid_name(cfg):
 
 
 class Scaler:
-    def __init__(self, cfg):
-        self.min_std = 1e-8
+    def __init__(self, cfg, input_scale=True, output_scale=True):
+        self.eps = cfg.exp.eps
+        self.input_scale = input_scale
+        self.output_scale = output_scale
 
         self.x_mean = np.load(Path(cfg.exp.scale_dir) / "x_mean.npy")
         self.x_std = np.maximum(
-            np.load(Path(cfg.exp.scale_dir) / "x_std.npy"), self.min_std
+            np.load(Path(cfg.exp.scale_dir) / "x_std.npy"), self.eps
         )
         self.y_mean = np.load(Path(cfg.exp.scale_dir) / "y_mean.npy")
         self.y_rms_sub = np.maximum(
-            np.load(Path(cfg.exp.scale_dir) / "y_rms_sub.npy"), self.min_std
+            np.load(Path(cfg.exp.scale_dir) / "y_rms_sub.npy"), self.eps
         )
 
     def scale_input(self, x):
+        if not self.input_scale:
+            return x
         return (x - self.x_mean) / self.x_std
 
     def scale_output(self, y):
+        if not self.output_scale:
+            return y
         return (y - self.y_mean) / self.y_rms_sub
 
     def inv_scale_output(self, y):
-        # override constant columns
-        for i in range(self.y_rms_sub.shape[0]):
-            if self.y_rms_sub[i] < self.min_std * 1.1:
-                y[:, i] = 0
+        if not self.output_scale:
+            return y
+
         y = y * self.y_rms_sub + self.y_mean
+        for i in range(self.y_rms_sub.shape[0]):
+            if self.y_rms_sub[i] < self.eps * 1.1:
+                if abs(self.y_mean[i]) < self.eps:
+                    y[:, i] = 0
+                else:
+                    y[:, i] = self.y_mean[i]
         return y
 
     def __call__(self, x, y):
@@ -79,9 +90,11 @@ class LeapLightningDataModule(LightningDataModule):
     def __init__(
         self,
         cfg,
+        input_scale=True,
+        output_scale=True,
     ):
         super().__init__()
-        self.scaler = Scaler(cfg)
+        self.scaler = Scaler(cfg, input_scale, output_scale)
         self.cfg = cfg
         self.rng = random.Random(self.cfg.exp.seed)
         self.train_dataset = self._make_dataset("train")
@@ -434,7 +447,7 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
         model = model_module.model_ema.module
     model = model_module.model
 
-    dm = LeapLightningDataModule(cfg)
+    dm = LeapLightningDataModule(cfg, output_scale=False)
     dataloader = dm.val_dataloader()
 
     preds = []
@@ -456,7 +469,6 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
     preds = Scaler(cfg).inv_scale_output(preds)
     print(type(preds), preds.shape)
     labels = torch.cat(labels).numpy()
-    labels = Scaler(cfg).inv_scale_output(labels)
 
     predict_df = pd.DataFrame(
         preds, columns=[i for i in range(preds.shape[1])]
@@ -465,7 +477,9 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
         labels, columns=[i for i in range(labels.shape[1])]
     ).reset_index()
 
-    r2_score = score(label_df, predict_df, "index")
+    r2_scores = score(label_df, predict_df, "index", multioutput="raw_values")
+    print(f"{r2_scores=}")
+    r2_score = r2_scores.mean()
     print(f"{r2_score=}")
     wandb.log({f"r2_score/{valid_name}": r2_score})
     """

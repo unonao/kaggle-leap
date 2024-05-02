@@ -111,6 +111,7 @@ def score(
     submission: pd.DataFrame,
     row_id_column_name: str,
     weights_column_name: Optional[str] = None,
+    multioutput="uniform_average",
 ) -> float:
     """
     Wrapper for https://scikit-learn.org/stable/modules/generated/sklearn.metrics.r2_score.html
@@ -248,6 +249,7 @@ def score(
         submission,
         sample_weight=sample_weight,
         force_finite=True,
+        multioutput=multioutput,
     )
 
     return score_result

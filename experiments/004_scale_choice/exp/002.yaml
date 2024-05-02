@@ -1,0 +1,15 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+dataset_dir: preprocess/make_webdataset_batch/all
+
+train_start: [1, 2] #1の2月
+train_end: [2, 1]
+valid_start: [2, 2]
+valid_end: [2, 2]
+
+train_data_skip_mod: 8
+valid_data_skip_mod: 8
+
+train_batch_size: 16
+valid_batch_size: 16
