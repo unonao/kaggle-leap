@@ -9,6 +9,7 @@ from pathlib import Path
 
 import hydra
 import numpy as np
+import pandas as pd
 import polars as pl
 import torch
 import webdataset as wds
@@ -32,26 +33,32 @@ from pytorch_lightning.loggers import WandbLogger
 from timm.utils import ModelEmaV2
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
 
-import utils
+import wandb
+from utils.metric import score
 
 
 class Scaler:
     def __init__(self, cfg):
-        self.input_mean = np.load(Path(cfg.exp.scale_dir) / "input_mean.npy")
-        self.input_max = np.load(Path(cfg.exp.scale_dir) / "input_max.npy")
-        self.input_min = np.load(Path(cfg.exp.scale_dir) / "input_min.npy")
-        self.output_scale = np.load(Path(cfg.exp.scale_dir) / "output_scale.npy")
+        min_std = 1e-8
+
+        self.x_mean = np.load(Path(cfg.exp.scale_dir) / "x_mean.npy")
+        self.x_std = np.maximum(np.load(Path(cfg.exp.scale_dir) / "x_std.npy"), min_std)
+        self.y_mean = np.load(Path(cfg.exp.scale_dir) / "y_mean.npy")
+        self.y_rms_sub = np.maximum(
+            np.load(Path(cfg.exp.scale_dir) / "y_rms_sub.npy"), min_std
+        )
 
     def scale_input(self, x):
-        return (x - self.input_mean) / (self.input_max - self.input_min + 1e9)
+        return (x - self.x_mean) / self.x_std
 
     def scale_output(self, y):
-        return y * self.output_scale
+        return (y - self.y_mean) / self.y_rms_sub
 
     def inv_scale_output(self, y):
-        return y / self.output_scale
+        return y * self.y_rms_sub + self.y_mean
 
     def __call__(self, x, y):
         return self.scale_input(x), self.scale_output(y)
@@ -67,7 +74,9 @@ class LeapLightningDataModule(LightningDataModule):
         self.cfg = cfg
         self.rng = random.Random(self.cfg.exp.seed)
         self.train_years = (1, 8) if cfg.debug is False else (1, 2)
-        self.valid_years = (8, 10) if cfg.debug is False else (9, 10)
+        self.valid_years = (
+            (1, 8) if cfg.debug is False else (1, 2)
+        )  # (8, 10) if cfg.debug is False else (9, 10)
         self.train_dataset = self._make_dataset("train")
         self.valid_dataset = self._make_dataset("valid")
 
@@ -94,7 +103,7 @@ class LeapLightningDataModule(LightningDataModule):
                 batch_size=None,
                 num_workers=self.cfg.exp.num_workers,
             )
-            .shuffle(10000)
+            .shuffle(7)
             .batched(
                 batchsize=self.cfg.exp.train_batch_size,
                 partial=False,
@@ -122,42 +131,52 @@ class LeapLightningDataModule(LightningDataModule):
         self.test_dataset = self.TestDataset(self.cfg, self.test_df, self.scaler)
         return DataLoader(
             self.test_dataset,
-            batch_size=self.cfg.exp.valid_batch_size,
+            batch_size=self.cfg.exp.valid_batch_size * 384,
             num_workers=self.cfg.exp.num_workers,
             shuffle=False,
             pin_memory=False,
         )
 
-    def _get_basename(self, year):
-        month = "02" if year == 1 else "01"
-        return (
-            f"shards_000{year}"
-            if self.cfg.debug is False
-            else f"shards_000{year}-{month}"
-        )
-
     def _get_webdataset_url_list(self, bucket_name, prefix):
         storage_client = storage.Client()
         blobs = storage_client.list_blobs(bucket_name, prefix=prefix, delimiter=None)
-        return [
-            f"pipe:gsutil cat gs://{self.cfg.dir.gcs_bucket}/{path.name}"
-            for path in blobs
-            if path.name.endswith("tar")
-        ]
+        return sorted(
+            [
+                f"pipe:gsutil cat gs://{self.cfg.dir.gcs_bucket}/{path.name}"
+                for path in blobs
+                if path.name.endswith("tar")
+            ]
+        )
 
     def _make_tar_list(self, mode="train"):
         tar_list = []
-        start_year, end_year = self.train_years if mode == "train" else self.valid_years
-        for year in range(start_year, end_year):
-            # debug時は１月のデータのみ
-            tmp = self._get_webdataset_url_list(
-                self.cfg.dir.gcs_bucket,
-                f"{self.cfg.dir.gcs_base_dir}/{self.cfg.exp.dataset_dir}/{self._get_basename(year)}",
-            )
-            tar_list += tmp
+        start_year, start_month = (
+            self.cfg.exp.train_start if mode == "train" else self.cfg.exp.valid_start
+        )
+        end_year, end_month = (
+            self.cfg.exp.train_end if mode == "train" else self.cfg.exp.valid_end
+        )
+        if self.cfg.debug:
+            start_year, start_month = 1, 2
+            end_year, end_month = 1, 2
+
+        for year in range(start_year, end_year + 1):
+            for month in range(1, 13):
+                if (year == start_year and month < start_month) or (
+                    year == end_year and month > end_month
+                ):
+                    continue
+                tmp = self._get_webdataset_url_list(
+                    self.cfg.dir.gcs_bucket,
+                    f"{self.cfg.dir.gcs_base_dir}/{self.cfg.exp.dataset_dir}/shards_{year:04d}-{month:02d}",
+                )
+                tar_list += tmp
         # 1/data_skip_mod の数にする
-        if self.cfg.exp.data_skip_mod:
-            tar_list = tar_list[:: self.cfg.exp.data_skip_mod]
+        if mode == "train" and self.cfg.exp.train_data_skip_mod:
+            tar_list = tar_list[:: self.cfg.exp.train_data_skip_mod]
+        elif mode == "valid" and self.cfg.exp.valid_data_skip_mod:
+            tar_list = tar_list[:: self.cfg.exp.valid_data_skip_mod]
+
         print(mode, f"{len(tar_list)=}")
         return tar_list
 
@@ -173,16 +192,36 @@ class LeapLightningDataModule(LightningDataModule):
         return total_size
 
     def _get_dataset_size(self, mode="train"):
+        start_year, start_month = (
+            self.cfg.exp.train_start if mode == "train" else self.cfg.exp.valid_start
+        )
+        end_year, end_month = (
+            self.cfg.exp.train_end if mode == "train" else self.cfg.exp.valid_end
+        )
+        if self.cfg.debug:
+            start_year, start_month = 1, 2
+            end_year, end_month = 1, 2
+
         total_size = 0
-        start_year, end_year = self.train_years if mode == "train" else self.valid_years
-        for year in range(start_year, end_year):
-            tmp = self._sum_dataset_sizes(
-                self.cfg.dir.gcs_bucket,
-                f"{self.cfg.dir.gcs_base_dir}/{self.cfg.exp.dataset_dir}/{self._get_basename(year)}",
-            )
-            total_size += tmp // 384
-        if self.cfg.exp.data_skip_mod:
-            total_size = total_size // self.cfg.exp.data_skip_mod
+        for year in range(start_year, end_year + 1):
+            for month in range(1, 13):
+                if (year == start_year and month < start_month) or (
+                    year == end_year and month > end_month
+                ):
+                    continue
+                tmp = self._sum_dataset_sizes(
+                    self.cfg.dir.gcs_bucket,
+                    f"{self.cfg.dir.gcs_base_dir}/{self.cfg.exp.dataset_dir}/shards_{year:04d}-{month:02d}",
+                )
+                total_size += tmp
+
+        # 1/data_skip_mod の数にする
+        if mode == "train" and self.cfg.exp.train_data_skip_mod:
+            total_size = total_size // self.cfg.exp.train_data_skip_mod
+        elif mode == "valid" and self.cfg.exp.valid_data_skip_mod:
+            total_size = total_size // self.cfg.exp.valid_data_skip_mod
+        # 1ファイルに約384ずつまとめているのでそれで割っておく
+        total_size = total_size // 384
         return total_size
 
     def _make_dataset(self, mode="train"):
@@ -190,15 +229,21 @@ class LeapLightningDataModule(LightningDataModule):
         dataset_size = self._get_dataset_size(mode)
         dtype = torch.float64 if "64" in self.cfg.exp.precision else torch.float32
         print(mode, dataset_size)
+        dataset = None
+        if mode == "train":
+            dataset = wds.WebDataset(urls=tar_list, shardshuffle=True).shuffle(
+                100, rng=self.rng
+            )
+        else:
+            dataset = wds.WebDataset(urls=tar_list, shardshuffle=False)
+
         return (
-            wds.WebDataset(urls=tar_list, shardshuffle=True)
-            .shuffle(100, rng=self.rng)
-            .decode()
+            dataset.decode()
             .to_tuple("input.npy", "output.npy")
             .map_tuple(
                 lambda x: torch.tensor(
                     self.scaler.scale_input(
-                        np.delete(x, 375, 0)  # cam_in_SNOWHICE は削除
+                        np.delete(x, 375, 1)  # cam_in_SNOWHICE は削除
                     ),
                     dtype=dtype,
                 ),
@@ -243,6 +288,9 @@ class LeapLightningModule(LightningModule):
     def training_step(self, batch, batch_idx):
         mode = "train"
         x, y = batch
+        x = torch.flatten(x, start_dim=0, end_dim=1)
+        y = torch.flatten(y, start_dim=0, end_dim=1)
+
         out = self.__pred(x, mode)
         loss = self.loss_fc(out, y)
         self.log(
@@ -258,6 +306,8 @@ class LeapLightningModule(LightningModule):
     def validation_step(self, batch, batch_idx):
         mode = "valid"
         x, y = batch
+        x = torch.flatten(x, start_dim=0, end_dim=1)
+        y = torch.flatten(y, start_dim=0, end_dim=1)
         out = self.__pred(x, mode)
         loss = self.loss_fc(out, y)
         self.log(
@@ -374,28 +424,80 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
     )
 
 
-def predict(cfg: DictConfig, output_path: Path) -> None:
-    model = LeapLightningModule.load_from_checkpoint(
+def predict_valid(cfg: DictConfig, output_path: Path) -> None:
+    # TODO: チームを組むならvalidationデータセットを揃えて出力を保存する
+    model_module = LeapLightningModule.load_from_checkpoint(
         output_path / "checkpoints" / "best_model.ckpt", cfg=cfg
     )
-    trainer = Trainer()
+    if cfg.exp.ema.use_ema:
+        model = model_module.model_ema.module
+    model = model_module.model
+
     dm = LeapLightningDataModule(cfg)
-    test_predictions = trainer.predict(model, dm.test_dataloader())
-    test_predictions = torch.cat(test_predictions).cpu().numpy()
-    scaler = Scaler(cfg)
-    test_predictions = scaler.inv_scale_output(test_predictions)
-    print(type(test_predictions), test_predictions.shape, test_predictions)
+    dataloader = dm.val_dataloader()
+
+    preds = []
+    labels = []
+    model = model.to("cuda")
+    model.eval()
+    for x, y in tqdm(dataloader):
+        x, y = x.to("cuda"), y.to("cuda")
+        x = torch.flatten(x, start_dim=0, end_dim=1)
+        y = torch.flatten(y, start_dim=0, end_dim=1)
+        with torch.no_grad():
+            out = model(x)
+        preds.append(out.cpu())
+        labels.append(y.cpu())
+
+    preds = torch.cat(preds).numpy()
+    preds = Scaler(cfg).inv_scale_output(preds)
+    print(type(preds), preds.shape)
+    labels = torch.cat(labels).numpy()
+
+    predict_df = pd.DataFrame(preds, columns=[i for i in range(preds.shape[1])])
+    predict_df["id"] = range(len(predict_df))
+    label_df = pd.DataFrame(labels, columns=[i for i in range(labels.shape[1])])
+    label_df["id"] = range(len(label_df))
+
+    r2_score = score(label_df, predict_df, "id")
+    print(f"{r2_score=}")
+    wandb.log({"r2_score": r2_score})
+
+
+def predict_test(cfg: DictConfig, output_path: Path) -> None:
+    model_module = LeapLightningModule.load_from_checkpoint(
+        output_path / "checkpoints" / "best_model.ckpt", cfg=cfg
+    )
+    if cfg.exp.ema.use_ema:
+        model = model_module.model_ema.module
+    model = model_module.model
+
+    dm = LeapLightningDataModule(cfg)
+    dataloader = dm.test_dataloader()
+    preds = []
+    model = model.to("cuda")
+    model.eval()
+    for x in tqdm(dataloader):
+        x = x.to("cuda")
+        # webdatasetとは違い、batchでの読み出しではないのでflattenは必要ない
+        with torch.no_grad():
+            out = model(x)
+        preds.append(out.cpu())
+
+    preds = torch.cat(preds).numpy()
+    preds = Scaler(cfg).inv_scale_output(preds)
+    print(type(preds), preds.shape)
 
     # load sample
     sample_submission_df = pl.read_parquet(
         cfg.exp.sample_submission_path, n_rows=(None if cfg.debug is False else 500)
     )
 
-    test_predictions *= sample_submission_df[:, 1:].to_numpy()
+    preds *= sample_submission_df[:, 1:].to_numpy()
     sample_submission_df = pl.concat(
         [
             sample_submission_df.select("sample_id"),
-            pl.from_numpy(test_predictions, schema=sample_submission_df.columns[1:]),
+            pl.from_numpy(preds, schema=sample_submission_df.columns[1:]),
         ],
         how="horizontal",
     )
@@ -419,14 +521,16 @@ def main(cfg: DictConfig) -> None:
     pl_logger = WandbLogger(
         name=exp_name,
         project="kaggle-leap",
-        mode="disabled" if cfg.debug else None,
+        mode="disabled",  # if cfg.debug else None,
     )
     pl_logger.log_hyperparams(cfg)
 
     if "train" in cfg.exp.modes:
         train(cfg, output_path, pl_logger)
-    if "predict" in cfg.exp.modes:
-        predict(cfg, output_path)
+    if "valid" in cfg.exp.modes:
+        predict_valid(cfg, output_path)
+    if "test" in cfg.exp.modes:
+        predict_test(cfg, output_path)
 
 
 if __name__ == "__main__":

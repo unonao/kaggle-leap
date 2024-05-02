@@ -67,7 +67,9 @@ class LeapLightningDataModule(LightningDataModule):
         self.cfg = cfg
         self.rng = random.Random(self.cfg.exp.seed)
         self.train_years = (1, 8) if cfg.debug is False else (1, 2)
-        self.valid_years = (8, 10) if cfg.debug is False else (9, 10)
+        self.valid_years = (
+            (1, 8) if cfg.debug is False else (1, 2)
+        )  # (8, 10) if cfg.debug is False else (9, 10)
         self.train_dataset = self._make_dataset("train")
         self.valid_dataset = self._make_dataset("valid")
 
@@ -94,7 +96,7 @@ class LeapLightningDataModule(LightningDataModule):
                 batch_size=None,
                 num_workers=self.cfg.exp.num_workers,
             )
-            .shuffle(10000)
+            .shuffle(7)
             .batched(
                 batchsize=self.cfg.exp.train_batch_size,
                 partial=False,
@@ -180,7 +182,7 @@ class LeapLightningDataModule(LightningDataModule):
                 self.cfg.dir.gcs_bucket,
                 f"{self.cfg.dir.gcs_base_dir}/{self.cfg.exp.dataset_dir}/{self._get_basename(year)}",
             )
-            total_size += tmp // 384
+            total_size += tmp
         if self.cfg.exp.data_skip_mod:
             total_size = total_size // self.cfg.exp.data_skip_mod
         return total_size
@@ -192,13 +194,12 @@ class LeapLightningDataModule(LightningDataModule):
         print(mode, dataset_size)
         return (
             wds.WebDataset(urls=tar_list, shardshuffle=True)
-            .shuffle(100, rng=self.rng)
             .decode()
             .to_tuple("input.npy", "output.npy")
             .map_tuple(
                 lambda x: torch.tensor(
                     self.scaler.scale_input(
-                        np.delete(x, 375, 0)  # cam_in_SNOWHICE は削除
+                        np.delete(x, 375, 1)  # cam_in_SNOWHICE は削除
                     ),
                     dtype=dtype,
                 ),
@@ -243,6 +244,9 @@ class LeapLightningModule(LightningModule):
     def training_step(self, batch, batch_idx):
         mode = "train"
         x, y = batch
+        x = torch.flatten(x, start_dim=0, end_dim=1)
+        y = torch.flatten(y, start_dim=0, end_dim=1)
+
         out = self.__pred(x, mode)
         loss = self.loss_fc(out, y)
         self.log(
@@ -258,6 +262,8 @@ class LeapLightningModule(LightningModule):
     def validation_step(self, batch, batch_idx):
         mode = "valid"
         x, y = batch
+        x = torch.flatten(x, start_dim=0, end_dim=1)
+        y = torch.flatten(y, start_dim=0, end_dim=1)
         out = self.__pred(x, mode)
         loss = self.loss_fc(out, y)
         self.log(

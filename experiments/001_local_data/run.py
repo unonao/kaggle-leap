@@ -1,3 +1,4 @@
+import glob
 import json
 import math
 import os
@@ -37,33 +38,12 @@ from transformers import get_cosine_schedule_with_warmup
 import utils
 
 
-class Scaler:
-    def __init__(self, cfg):
-        self.input_mean = np.load(Path(cfg.exp.scale_dir) / "input_mean.npy")
-        self.input_max = np.load(Path(cfg.exp.scale_dir) / "input_max.npy")
-        self.input_min = np.load(Path(cfg.exp.scale_dir) / "input_min.npy")
-        self.output_scale = np.load(Path(cfg.exp.scale_dir) / "output_scale.npy")
-
-    def scale_input(self, x):
-        return (x - self.input_mean) / (self.input_max - self.input_min + 1e9)
-
-    def scale_output(self, y):
-        return y * self.output_scale
-
-    def inv_scale_output(self, y):
-        return y / self.output_scale
-
-    def __call__(self, x, y):
-        return self.scale_input(x), self.scale_output(y)
-
-
 class LeapLightningDataModule(LightningDataModule):
     def __init__(
         self,
         cfg,
     ):
         super().__init__()
-        self.scaler = Scaler(cfg)
         self.cfg = cfg
         self.rng = random.Random(self.cfg.exp.seed)
         self.train_years = (1, 8) if cfg.debug is False else (1, 2)
@@ -72,20 +52,16 @@ class LeapLightningDataModule(LightningDataModule):
         self.valid_dataset = self._make_dataset("valid")
 
     class TestDataset(Dataset):
-        def __init__(self, cfg, test_df, scaler):
+        def __init__(self, cfg, test_df):
             self.cfg = cfg
-            self.scaler = scaler
             # 提供データは cam_in_SNOWHICE は削除済みなので削除しないが、idを削除する
             self.x = test_df[:, 1:].to_numpy()
-            self.dtype = torch.float64 if "64" in cfg.exp.precision else torch.float32
 
         def __len__(self):
             return self.x.shape[0]
 
         def __getitem__(self, index):
-            return torch.from_numpy(self.scaler.scale_input(self.x[index])).to(
-                self.dtype
-            )
+            return torch.from_numpy(self.x[index])
 
     def train_dataloader(self):
         return (
@@ -94,7 +70,7 @@ class LeapLightningDataModule(LightningDataModule):
                 batch_size=None,
                 num_workers=self.cfg.exp.num_workers,
             )
-            .shuffle(10000)
+            .shuffle(7)
             .batched(
                 batchsize=self.cfg.exp.train_batch_size,
                 partial=False,
@@ -119,7 +95,7 @@ class LeapLightningDataModule(LightningDataModule):
         self.test_df = pl.read_parquet(
             self.cfg.exp.test_path, n_rows=(None if self.cfg.debug is False else 500)
         )
-        self.test_dataset = self.TestDataset(self.cfg, self.test_df, self.scaler)
+        self.test_dataset = self.TestDataset(self.cfg, self.test_df)
         return DataLoader(
             self.test_dataset,
             batch_size=self.cfg.exp.valid_batch_size,
@@ -136,6 +112,7 @@ class LeapLightningDataModule(LightningDataModule):
             else f"shards_000{year}-{month}"
         )
 
+    """
     def _get_webdataset_url_list(self, bucket_name, prefix):
         storage_client = storage.Client()
         blobs = storage_client.list_blobs(bucket_name, prefix=prefix, delimiter=None)
@@ -144,15 +121,21 @@ class LeapLightningDataModule(LightningDataModule):
             for path in blobs
             if path.name.endswith("tar")
         ]
+    """
 
     def _make_tar_list(self, mode="train"):
         tar_list = []
         start_year, end_year = self.train_years if mode == "train" else self.valid_years
         for year in range(start_year, end_year):
+            """
             # debug時は１月のデータのみ
             tmp = self._get_webdataset_url_list(
                 self.cfg.dir.gcs_bucket,
                 f"{self.cfg.dir.gcs_base_dir}/{self.cfg.exp.dataset_dir}/{self._get_basename(year)}",
+            )
+            """
+            tmp = glob.glob(
+                f"input/make_webdataset/all/{self._get_basename(year)}/*.tar"
             )
             tar_list += tmp
         # 1/data_skip_mod の数にする
@@ -161,6 +144,7 @@ class LeapLightningDataModule(LightningDataModule):
         print(mode, f"{len(tar_list)=}")
         return tar_list
 
+    """
     def _sum_dataset_sizes(self, bucket_name, prefix):
         storage_client = storage.Client()
         blobs = storage_client.list_blobs(bucket_name, prefix=prefix)
@@ -171,16 +155,28 @@ class LeapLightningDataModule(LightningDataModule):
                 dataset_size = json_data["dataset size"]
                 total_size += dataset_size
         return total_size
+    """
 
     def _get_dataset_size(self, mode="train"):
         total_size = 0
         start_year, end_year = self.train_years if mode == "train" else self.valid_years
         for year in range(start_year, end_year):
+            """
             tmp = self._sum_dataset_sizes(
                 self.cfg.dir.gcs_bucket,
                 f"{self.cfg.dir.gcs_base_dir}/{self.cfg.exp.dataset_dir}/{self._get_basename(year)}",
             )
-            total_size += tmp // 384
+            """
+            paths = glob.glob(
+                f"input/make_webdataset/all/{self._get_basename(year)}/dataset-size.json"
+            )
+            tmp = 0
+            for path in paths:
+                with open(path, "r") as f:
+                    json_data = json.load(f)
+                    dataset_size = json_data["dataset size"]
+                    tmp += dataset_size
+            total_size += tmp
         if self.cfg.exp.data_skip_mod:
             total_size = total_size // self.cfg.exp.data_skip_mod
         return total_size
@@ -190,19 +186,19 @@ class LeapLightningDataModule(LightningDataModule):
         dataset_size = self._get_dataset_size(mode)
         dtype = torch.float64 if "64" in self.cfg.exp.precision else torch.float32
         print(mode, dataset_size)
+
+        def map_x(x):
+            x = torch.tensor(x, dtype=dtype)
+            return torch.cat((x[:375], x[376:]))
+
         return (
             wds.WebDataset(urls=tar_list, shardshuffle=True)
             .shuffle(100, rng=self.rng)
             .decode()
             .to_tuple("input.npy", "output.npy")
             .map_tuple(
-                lambda x: torch.tensor(
-                    self.scaler.scale_input(
-                        np.delete(x, 375, 0)  # cam_in_SNOWHICE は削除
-                    ),
-                    dtype=dtype,
-                ),
-                lambda y: torch.tensor(self.scaler.scale_output(y), dtype=dtype),
+                map_x,
+                lambda y: torch.tensor(y, dtype=dtype),
             )
             .with_length(dataset_size)
         )
@@ -229,20 +225,56 @@ class LeapModel(nn.Module):
         return self.layers(x)
 
 
+class Scaler:
+    def __init__(self, cfg):
+        dtype = torch.float64 if "64" in cfg.exp.precision else torch.float32
+
+        self.input_mean = torch.tensor(
+            np.load(Path(cfg.exp.scale_dir) / "input_mean.npy"), dtype=dtype
+        ).to("cuda")
+        self.input_max = torch.tensor(
+            np.load(Path(cfg.exp.scale_dir) / "input_max.npy"), dtype=dtype
+        ).to("cuda")
+        self.input_min = torch.tensor(
+            np.load(Path(cfg.exp.scale_dir) / "input_min.npy"), dtype=dtype
+        ).to("cuda")
+        self.output_scale = torch.tensor(
+            np.load(Path(cfg.exp.scale_dir) / "output_scale.npy"), dtype=dtype
+        ).to("cuda")
+
+    def scale_input(self, x):
+        return (x - self.input_mean) / (self.input_max - self.input_min + 1e9)
+
+    def scale_output(self, y):
+        return y * self.output_scale
+
+    def inv_scale_output(self, y):
+        return y / self.output_scale
+
+    def __call__(self, x, y):
+        return self.scale_input(x), self.scale_output(y)
+
+
 class LeapLightningModule(LightningModule):
     def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg
         self.model = LeapModel(**cfg.exp.model)
         self.loss_fc = nn.MSELoss()  # Using MSE for regression
+        self.scaler = Scaler(cfg)
         self.model_ema = None
         if self.cfg.exp.ema.use_ema:
             print("Using EMA")
             self.model_ema = ModelEmaV2(self.model, self.cfg.exp.ema.decay)
 
+        self.torch_dtype = torch.float64 if "64" in cfg.exp.precision else torch.float32
+
     def training_step(self, batch, batch_idx):
         mode = "train"
         x, y = batch
+        with torch.no_grad():
+            x = self.scaler.scale_input(x)
+            y = self.scaler.scale_output(y)
         out = self.__pred(x, mode)
         loss = self.loss_fc(out, y)
         self.log(
@@ -258,6 +290,9 @@ class LeapLightningModule(LightningModule):
     def validation_step(self, batch, batch_idx):
         mode = "valid"
         x, y = batch
+        with torch.no_grad():
+            x = self.scaler.scale_input(x).to(self.torch_dtype)
+            y = self.scaler.scale_output(y).to(self.torch_dtype)
         out = self.__pred(x, mode)
         loss = self.loss_fc(out, y)
         self.log(
@@ -273,7 +308,11 @@ class LeapLightningModule(LightningModule):
     def predict_step(self, batch, batch_idx):
         mode = "test"
         x = batch
+        with torch.no_grad():
+            x = self.scaler.scale_input(x).to(self.torch_dtype)
         out = self.__pred(x, mode)
+        with torch.no_grad():
+            out = self.scaler.inv_scale_output(out.to(self.torch_dtype))
         return out
 
     def __pred(self, x, mode: str) -> torch.Tensor:
@@ -350,7 +389,7 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
         accumulate_grad_batches=cfg.exp.accumulate_grad_batches,
         logger=pl_logger,
         log_every_n_steps=1,
-        limit_train_batches=None if cfg.debug is False else 2,
+        limit_train_batches=None if cfg.debug is False else 10,
         limit_val_batches=None if cfg.debug is False else 2,
         # deterministic=True,
         callbacks=[
@@ -364,6 +403,7 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
         num_sanity_val_steps=0,
         # sync_batchnorm=True,
         check_val_every_n_epoch=cfg.exp.check_val_every_n_epoch,
+        profiler="simple",
     )
     trainer.fit(model, dm)
 
@@ -382,8 +422,6 @@ def predict(cfg: DictConfig, output_path: Path) -> None:
     dm = LeapLightningDataModule(cfg)
     test_predictions = trainer.predict(model, dm.test_dataloader())
     test_predictions = torch.cat(test_predictions).cpu().numpy()
-    scaler = Scaler(cfg)
-    test_predictions = scaler.inv_scale_output(test_predictions)
     print(type(test_predictions), test_predictions.shape, test_predictions)
 
     # load sample
