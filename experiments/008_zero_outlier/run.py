@@ -46,6 +46,7 @@ def get_valid_name(cfg):
 
 class Scaler:
     def __init__(self, cfg, input_scale=True, output_scale=True):
+        self.cfg = cfg
         self.eps = cfg.exp.eps
         self.input_scale = input_scale
         self.output_scale = output_scale
@@ -62,12 +63,19 @@ class Scaler:
     def scale_input(self, x):
         if not self.input_scale:
             return x
-        return (x - self.x_mean) / self.x_std
+        x = (x - self.x_mean) / self.x_std
+        # outlier_std_rate を超えたら0にする
+        x[x > self.cfg.exp.outlier_std_rate] = 0
+        x[x < -self.cfg.exp.outlier_std_rate] = 0
+        return x
 
     def scale_output(self, y):
         if not self.output_scale:
             return y
-        return (y - self.y_mean) / self.y_rms_sub
+        y = (y - self.y_mean) / self.y_rms_sub
+        y[y > self.cfg.exp.outlier_std_rate] = 0
+        y[y < -self.cfg.exp.outlier_std_rate] = 0
+        return y
 
     def inv_scale_output(self, y):
         if not self.output_scale:
@@ -106,15 +114,12 @@ class LeapLightningDataModule(LightningDataModule):
             self.scaler = scaler
             # 提供データは cam_in_SNOWHICE は削除済みなので削除しないが、idを削除する
             self.x = test_df[:, 1:].to_numpy()
-            self.dtype = torch.float64 if "64" in cfg.exp.precision else torch.float32
 
         def __len__(self):
             return self.x.shape[0]
 
         def __getitem__(self, index):
-            return torch.from_numpy(self.scaler.scale_input(self.x[index])).to(
-                self.dtype
-            )
+            return torch.from_numpy(self.scaler.scale_input(self.x[index]))
 
     def train_dataloader(self):
         return (
@@ -237,7 +242,6 @@ class LeapLightningDataModule(LightningDataModule):
     def _make_dataset(self, mode="train"):
         tar_list = self._make_tar_list(mode)
         dataset_size = self._get_dataset_size(mode)
-        dtype = torch.float64 if "64" in self.cfg.exp.precision else torch.float32
         print(mode, dataset_size)
         dataset = None
         if mode == "train":
@@ -254,10 +258,9 @@ class LeapLightningDataModule(LightningDataModule):
                 lambda x: torch.tensor(
                     self.scaler.scale_input(
                         np.delete(x, 375, 1)  # cam_in_SNOWHICE は削除
-                    ),
-                    dtype=dtype,
+                    )
                 ),
-                lambda y: torch.tensor(self.scaler.scale_output(y), dtype=dtype),
+                lambda y: torch.tensor(self.scaler.scale_output(y)),
             )
             .with_length(dataset_size)
         )
@@ -296,15 +299,23 @@ class LeapLightningModule(LightningModule):
             self.model_ema = ModelEmaV2(self.model, self.cfg.exp.ema.decay)
 
         self.valid_name = get_valid_name(cfg)
+        self.torch_dtype = torch.float64 if "64" in cfg.exp.precision else torch.float32
 
     def training_step(self, batch, batch_idx):
         mode = "train"
         x, y = batch
         x = torch.flatten(x, start_dim=0, end_dim=1)
         y = torch.flatten(y, start_dim=0, end_dim=1)
-
+        x = x.to(self.torch_dtype)
+        y = y.to(self.torch_dtype)
         out = self.__pred(x, mode)
         loss = self.loss_fc(out, y)
+        if loss.detach().item() > 10000:
+            mse = (out - y) ** 2
+            mse_index = (mse == torch.max(mse)).nonzero(as_tuple=True)
+            print(f"{mse_index=}")
+            print(f"{y[mse_index]=}")
+            print(f"{out[mse_index]=}")
         self.log(
             f"{mode}_loss",
             loss.detach().item(),
@@ -320,6 +331,8 @@ class LeapLightningModule(LightningModule):
         x, y = batch
         x = torch.flatten(x, start_dim=0, end_dim=1)
         y = torch.flatten(y, start_dim=0, end_dim=1)
+        x = x.to(self.torch_dtype)
+        y = y.to(self.torch_dtype)
         out = self.__pred(x, mode)
         loss = self.loss_fc(out, y)
         self.log(
@@ -335,6 +348,7 @@ class LeapLightningModule(LightningModule):
     def predict_step(self, batch, batch_idx):
         mode = "test"
         x = batch
+        x = x.to(self.torch_dtype)
         out = self.__pred(x, mode)
         return out
 
@@ -439,6 +453,8 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
 
 def predict_valid(cfg: DictConfig, output_path: Path) -> None:
     # TODO: チームを組むならvalidationデータセットを揃えて出力を保存する
+    torch_dtype = torch.float64 if "64" in cfg.exp.precision else torch.float32
+
     valid_name = get_valid_name(cfg)
     checkpoint_path = (
         output_path / "checkpoints" / "best_model.ckpt"
@@ -462,8 +478,8 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
         x = torch.flatten(x, start_dim=0, end_dim=1)
         y = torch.flatten(y, start_dim=0, end_dim=1)
         with torch.no_grad():
-            out = model(x)
-        preds.append(out.cpu())
+            out = model(x.to(torch_dtype))
+        preds.append(out.cpu().to(torch.float64))
         labels.append(y.cpu())
         if cfg.debug:
             break
@@ -482,7 +498,7 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
 
     r2_scores = score(label_df, predict_df, "index", multioutput="raw_values")
     print(f"{r2_scores=}")
-    r2_score = r2_scores.mean()
+    r2_score = float(r2_scores.mean())
     print(f"{r2_score=}")
     wandb.log({f"r2_score/{valid_name}": r2_score})
     """
@@ -508,6 +524,7 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
 
 
 def predict_test(cfg: DictConfig, output_path: Path) -> None:
+    torch_dtype = torch.float64 if "64" in cfg.exp.precision else torch.float32
     checkpoint_path = (
         output_path / "checkpoints" / "best_model.ckpt"
         if cfg.exp.pred_checkpoint_path is None
@@ -527,8 +544,8 @@ def predict_test(cfg: DictConfig, output_path: Path) -> None:
         x = x.to("cuda")
         # webdatasetとは違い、batchでの読み出しではないのでflattenは必要ない
         with torch.no_grad():
-            out = model(x)
-        preds.append(out.cpu())
+            out = model(x.to(torch_dtype))
+        preds.append(out.cpu().to(torch.float64))
 
     preds = torch.cat(preds).numpy()
     preds = Scaler(cfg).inv_scale_output(preds)

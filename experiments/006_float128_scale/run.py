@@ -50,37 +50,44 @@ class Scaler:
         self.input_scale = input_scale
         self.output_scale = output_scale
 
-        self.x_mean = np.load(Path(cfg.exp.scale_dir) / "x_mean.npy")
-        self.x_std = np.maximum(
-            np.load(Path(cfg.exp.scale_dir) / "x_std.npy"), self.eps
+        self.x_mean = np.load(Path(cfg.exp.scale_dir) / "x_mean.npy").astype(
+            np.float128
         )
-        self.y_mean = np.load(Path(cfg.exp.scale_dir) / "y_mean.npy")
+        self.x_std = np.maximum(
+            np.load(Path(cfg.exp.scale_dir) / "x_std.npy").astype(np.float128), self.eps
+        )
+        self.y_mean = np.load(Path(cfg.exp.scale_dir) / "y_mean.npy").astype(
+            np.float128
+        )
         self.y_rms_sub = np.maximum(
-            np.load(Path(cfg.exp.scale_dir) / "y_rms_sub.npy"), self.eps
+            np.load(Path(cfg.exp.scale_dir) / "y_rms_sub.npy").astype(np.float128),
+            self.eps,
         )
 
     def scale_input(self, x):
         if not self.input_scale:
             return x
-        return (x - self.x_mean) / self.x_std
+        return ((x.astype(np.float128) - self.x_mean) / self.x_std).astype(np.float64)
 
     def scale_output(self, y):
         if not self.output_scale:
             return y
-        return (y - self.y_mean) / self.y_rms_sub
+        return ((y.astype(np.float128) - self.y_mean) / self.y_rms_sub).astype(
+            np.float64
+        )
 
     def inv_scale_output(self, y):
         if not self.output_scale:
             return y
 
-        y = y * self.y_rms_sub + self.y_mean
+        y = y.astype(np.float128) * self.y_rms_sub + self.y_mean
         for i in range(self.y_rms_sub.shape[0]):
             if self.y_rms_sub[i] < self.eps * 1.1:
                 if abs(self.y_mean[i]) < self.eps:
                     y[:, i] = 0
                 else:
                     y[:, i] = self.y_mean[i]
-        return y
+        return y.astype(np.float64)
 
     def __call__(self, x, y):
         return self.scale_input(x), self.scale_output(y)
@@ -106,15 +113,12 @@ class LeapLightningDataModule(LightningDataModule):
             self.scaler = scaler
             # 提供データは cam_in_SNOWHICE は削除済みなので削除しないが、idを削除する
             self.x = test_df[:, 1:].to_numpy()
-            self.dtype = torch.float64 if "64" in cfg.exp.precision else torch.float32
 
         def __len__(self):
             return self.x.shape[0]
 
         def __getitem__(self, index):
-            return torch.from_numpy(self.scaler.scale_input(self.x[index])).to(
-                self.dtype
-            )
+            return torch.from_numpy(self.scaler.scale_input(self.x[index]))
 
     def train_dataloader(self):
         return (
@@ -237,7 +241,6 @@ class LeapLightningDataModule(LightningDataModule):
     def _make_dataset(self, mode="train"):
         tar_list = self._make_tar_list(mode)
         dataset_size = self._get_dataset_size(mode)
-        dtype = torch.float64 if "64" in self.cfg.exp.precision else torch.float32
         print(mode, dataset_size)
         dataset = None
         if mode == "train":
@@ -254,10 +257,9 @@ class LeapLightningDataModule(LightningDataModule):
                 lambda x: torch.tensor(
                     self.scaler.scale_input(
                         np.delete(x, 375, 1)  # cam_in_SNOWHICE は削除
-                    ),
-                    dtype=dtype,
+                    )
                 ),
-                lambda y: torch.tensor(self.scaler.scale_output(y), dtype=dtype),
+                lambda y: torch.tensor(self.scaler.scale_output(y)),
             )
             .with_length(dataset_size)
         )
@@ -296,13 +298,15 @@ class LeapLightningModule(LightningModule):
             self.model_ema = ModelEmaV2(self.model, self.cfg.exp.ema.decay)
 
         self.valid_name = get_valid_name(cfg)
+        self.torch_dtype = torch.float64 if "64" in cfg.exp.precision else torch.float32
 
     def training_step(self, batch, batch_idx):
         mode = "train"
         x, y = batch
         x = torch.flatten(x, start_dim=0, end_dim=1)
         y = torch.flatten(y, start_dim=0, end_dim=1)
-
+        x = x.to(self.torch_dtype)
+        y = y.to(self.torch_dtype)
         out = self.__pred(x, mode)
         loss = self.loss_fc(out, y)
         self.log(
@@ -320,6 +324,8 @@ class LeapLightningModule(LightningModule):
         x, y = batch
         x = torch.flatten(x, start_dim=0, end_dim=1)
         y = torch.flatten(y, start_dim=0, end_dim=1)
+        x = x.to(self.torch_dtype)
+        y = y.to(self.torch_dtype)
         out = self.__pred(x, mode)
         loss = self.loss_fc(out, y)
         self.log(
@@ -335,6 +341,7 @@ class LeapLightningModule(LightningModule):
     def predict_step(self, batch, batch_idx):
         mode = "test"
         x = batch
+        x = x.to(self.torch_dtype)
         out = self.__pred(x, mode)
         return out
 
@@ -439,6 +446,8 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
 
 def predict_valid(cfg: DictConfig, output_path: Path) -> None:
     # TODO: チームを組むならvalidationデータセットを揃えて出力を保存する
+    torch_dtype = torch.float64 if "64" in cfg.exp.precision else torch.float32
+
     valid_name = get_valid_name(cfg)
     checkpoint_path = (
         output_path / "checkpoints" / "best_model.ckpt"
@@ -462,8 +471,8 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
         x = torch.flatten(x, start_dim=0, end_dim=1)
         y = torch.flatten(y, start_dim=0, end_dim=1)
         with torch.no_grad():
-            out = model(x)
-        preds.append(out.cpu())
+            out = model(x.to(torch_dtype))
+        preds.append(out.cpu().to(torch.float64))
         labels.append(y.cpu())
         if cfg.debug:
             break
@@ -482,7 +491,7 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
 
     r2_scores = score(label_df, predict_df, "index", multioutput="raw_values")
     print(f"{r2_scores=}")
-    r2_score = r2_scores.mean()
+    r2_score = float(r2_scores.mean())
     print(f"{r2_score=}")
     wandb.log({f"r2_score/{valid_name}": r2_score})
     """
@@ -508,6 +517,7 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
 
 
 def predict_test(cfg: DictConfig, output_path: Path) -> None:
+    torch_dtype = torch.float64 if "64" in cfg.exp.precision else torch.float32
     checkpoint_path = (
         output_path / "checkpoints" / "best_model.ckpt"
         if cfg.exp.pred_checkpoint_path is None
@@ -527,8 +537,8 @@ def predict_test(cfg: DictConfig, output_path: Path) -> None:
         x = x.to("cuda")
         # webdatasetとは違い、batchでの読み出しではないのでflattenは必要ない
         with torch.no_grad():
-            out = model(x)
-        preds.append(out.cpu())
+            out = model(x.to(torch_dtype))
+        preds.append(out.cpu().to(torch.float64))
 
     preds = torch.cat(preds).numpy()
     preds = Scaler(cfg).inv_scale_output(preds)
@@ -567,7 +577,7 @@ def main(cfg: DictConfig) -> None:
     pl_logger = WandbLogger(
         name=exp_name,
         project="kaggle-leap",
-        mode="disabled" if cfg.debug else None,
+        mode="disabled",  # if cfg.debug else None,
     )
     pl_logger.log_hyperparams(cfg)
 

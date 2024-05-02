@@ -5,7 +5,8 @@ dataset_dir: preprocess/make_webdataset_batch/base
 scale_dir: misc/normalize
 test_path: input/test.parquet
 sample_submission_path: input/sample_submission.parquet
-pred_checkpoint_path: None
+pred_checkpoint_path: null
+
 # data 指定期間内のデータを利用。skip_modで間引く
 train_start: [1, 2] #1の2月
 train_end: [7, 12] # 7年目の12月

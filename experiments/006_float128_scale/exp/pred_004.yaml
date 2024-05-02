@@ -1,0 +1,6 @@
+defaults:
+  - 004@_here_ # ベースの設定ファイルを指定する
+
+modes: [valid]
+pred_checkpoint_path: output/experiments/004_scale_choice/004/checkpoints/best_model.ckpt
+eps: 1e-8
