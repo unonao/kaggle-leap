@@ -40,6 +40,10 @@ import wandb
 from utils.metric import score
 
 
+def get_valid_name(cfg):
+    return f"{cfg.exp.valid_start[0]:02d}-{cfg.exp.valid_start[1]:02d}_{cfg.exp.valid_end[0]:02d}-{cfg.exp.valid_end[1]:02d}_{cfg.exp.valid_data_skip_mod}"
+
+
 class Scaler:
     def __init__(self, cfg):
         self.min_std = 1e-8
@@ -278,7 +282,7 @@ class LeapLightningModule(LightningModule):
             print("Using EMA")
             self.model_ema = ModelEmaV2(self.model, self.cfg.exp.ema.decay)
 
-        self.validation_name = f"{cfg.exp.valid_start[0]:02d}-{cfg.exp.valid_start[1]:02d}_{cfg.exp.valid_end[0]:02d}-{cfg.exp.valid_end[1]:02d}_{cfg.exp.valid_data_skip_mod}"
+        self.valid_name = get_valid_name(cfg)
 
     def training_step(self, batch, batch_idx):
         mode = "train"
@@ -306,7 +310,7 @@ class LeapLightningModule(LightningModule):
         out = self.__pred(x, mode)
         loss = self.loss_fc(out, y)
         self.log(
-            f"{mode}_loss/{self.validation_name}",
+            f"{mode}_loss/{self.valid_name}",
             loss.detach().item(),
             on_step=True,
             on_epoch=True,
@@ -360,8 +364,8 @@ class LeapLightningModule(LightningModule):
 
 
 def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
-    validation_name = f"{cfg.exp.valid_start[0]:02d}-{cfg.exp.valid_start[1]:02d}_{cfg.exp.valid_end[0]:02d}-{cfg.exp.valid_end[1]:02d}_{cfg.exp.valid_data_skip_mod}"
-    monitor = f"valid_loss/{validation_name}"
+    valid_name = get_valid_name(cfg)
+    monitor = f"valid_loss/{valid_name}"
     dm = LeapLightningDataModule(cfg)
     model = LeapLightningModule(cfg)
     checkpoint_cb = ModelCheckpoint(
@@ -422,6 +426,7 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
 
 def predict_valid(cfg: DictConfig, output_path: Path) -> None:
     # TODO: チームを組むならvalidationデータセットを揃えて出力を保存する
+    valid_name = get_valid_name(cfg)
     model_module = LeapLightningModule.load_from_checkpoint(
         output_path / "checkpoints" / "best_model.ckpt", cfg=cfg
     )
@@ -458,7 +463,7 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
 
     r2_score = score(label_df, predict_df, "id")
     print(f"{r2_score=}")
-    wandb.log({"r2_score": r2_score})
+    wandb.log({f"r2_score/{valid_name}": r2_score})
 
 
 def predict_test(cfg: DictConfig, output_path: Path) -> None:

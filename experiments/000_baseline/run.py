@@ -94,7 +94,7 @@ class LeapLightningDataModule(LightningDataModule):
                 batch_size=None,
                 num_workers=self.cfg.exp.num_workers,
             )
-            .shuffle(10000)
+            .shuffle(7)
             .batched(
                 batchsize=self.cfg.exp.train_batch_size,
                 partial=False,
@@ -180,7 +180,7 @@ class LeapLightningDataModule(LightningDataModule):
                 self.cfg.dir.gcs_bucket,
                 f"{self.cfg.dir.gcs_base_dir}/{self.cfg.exp.dataset_dir}/{self._get_basename(year)}",
             )
-            total_size += tmp // 384
+            total_size += tmp
         if self.cfg.exp.data_skip_mod:
             total_size = total_size // self.cfg.exp.data_skip_mod
         return total_size
