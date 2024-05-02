@@ -449,6 +449,7 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
             out = model(x)
         preds.append(out.cpu())
         labels.append(y.cpu())
+        break
 
     preds = torch.cat(preds).numpy()
     preds = Scaler(cfg).inv_scale_output(preds)
@@ -456,14 +457,36 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
     labels = torch.cat(labels).numpy()
     labels = Scaler(cfg).inv_scale_output(labels)
 
-    predict_df = pd.DataFrame(preds, columns=[i for i in range(preds.shape[1])])
-    predict_df["id"] = range(len(predict_df))
-    label_df = pd.DataFrame(labels, columns=[i for i in range(labels.shape[1])])
-    label_df["id"] = range(len(label_df))
+    predict_df = pd.DataFrame(
+        preds, columns=[i for i in range(preds.shape[1])]
+    ).reset_index()
+    label_df = pd.DataFrame(
+        labels, columns=[i for i in range(labels.shape[1])]
+    ).reset_index()
 
-    r2_score = score(label_df, predict_df, "id")
+    r2_score = score(label_df, predict_df, "index")
     print(f"{r2_score=}")
     wandb.log({f"r2_score/{valid_name}": r2_score})
+    """
+    # weighted
+    # load sample
+    weight_np = (
+        pl.read_parquet(cfg.exp.sample_submission_path, n_rows=1)[:, 1:]
+        .to_numpy()
+        .flatten()
+    )
+    preds *= weight_np
+    labels *= weight_np
+    predict_df = pd.DataFrame(
+        preds, columns=[i for i in range(preds.shape[1])]
+    ).reset_index()
+    label_df = pd.DataFrame(
+        labels, columns=[i for i in range(labels.shape[1])]
+    ).reset_index()
+    r2_score_weighted = score(label_df, predict_df, "index")
+    print(f"{r2_score_weighted=}")
+    wandb.log({f"r2_score_weighted/{valid_name}": r2_score})
+    """
 
 
 def predict_test(cfg: DictConfig, output_path: Path) -> None:

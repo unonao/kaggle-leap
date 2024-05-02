@@ -7,7 +7,7 @@ from kaggle.api.kaggle_api_extended import KaggleApi
 api = KaggleApi()
 api.authenticate()
 
-COMPETITION = "child-mind-institute-detect-sleep-states"
+COMPETITION = "leap-atmospheric-physics-ai-climsim"
 result_ = api.competition_submissions(COMPETITION)[0]
 latest_ref = str(result_)  # 最新のサブミット番号
 print(result_.url)

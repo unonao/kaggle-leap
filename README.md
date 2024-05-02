@@ -5,6 +5,8 @@ gscfuseの自動マウント(/etc/fstab に追記)
 kaggle-leap /home/naoki.a.murakami/kaggle-leap/output gcsfuse rw,file_mode=777,dir_mode=777,allow_other,_netdev,only_dir=kami,rename_dir_limit=20
 ```
 
+gcloud storage cp gs://kaggle-leap/kami/experiments/003_scale/001/submission.csv .
+
 
 ## 特徴
 - Docker によるポータブルなKaggleと同一の環境
