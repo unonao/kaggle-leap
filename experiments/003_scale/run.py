@@ -42,13 +42,15 @@ from utils.metric import score
 
 class Scaler:
     def __init__(self, cfg):
-        min_std = 1e-8
+        self.min_std = 1e-8
 
         self.x_mean = np.load(Path(cfg.exp.scale_dir) / "x_mean.npy")
-        self.x_std = np.maximum(np.load(Path(cfg.exp.scale_dir) / "x_std.npy"), min_std)
+        self.x_std = np.maximum(
+            np.load(Path(cfg.exp.scale_dir) / "x_std.npy"), self.min_std
+        )
         self.y_mean = np.load(Path(cfg.exp.scale_dir) / "y_mean.npy")
         self.y_rms_sub = np.maximum(
-            np.load(Path(cfg.exp.scale_dir) / "y_rms_sub.npy"), min_std
+            np.load(Path(cfg.exp.scale_dir) / "y_rms_sub.npy"), self.min_std
         )
 
     def scale_input(self, x):
@@ -58,7 +60,12 @@ class Scaler:
         return (y - self.y_mean) / self.y_rms_sub
 
     def inv_scale_output(self, y):
-        return y * self.y_rms_sub + self.y_mean
+        # override constant columns
+        for i in range(self.y_rms_sub.shape[0]):
+            if self.y_rms_sub[i] < self.min_std * 1.1:
+                y[:, i] = 0
+        y = y * self.y_rms_sub + self.y_mean
+        return y
 
     def __call__(self, x, y):
         return self.scale_input(x), self.scale_output(y)
@@ -73,10 +80,6 @@ class LeapLightningDataModule(LightningDataModule):
         self.scaler = Scaler(cfg)
         self.cfg = cfg
         self.rng = random.Random(self.cfg.exp.seed)
-        self.train_years = (1, 8) if cfg.debug is False else (1, 2)
-        self.valid_years = (
-            (1, 8) if cfg.debug is False else (1, 2)
-        )  # (8, 10) if cfg.debug is False else (9, 10)
         self.train_dataset = self._make_dataset("train")
         self.valid_dataset = self._make_dataset("valid")
 
@@ -111,17 +114,13 @@ class LeapLightningDataModule(LightningDataModule):
         )
 
     def val_dataloader(self):
-        return (
-            wds.WebLoader(
-                self.valid_dataset,
-                batch_size=None,
-                num_workers=self.cfg.exp.num_workers,
-            )
-            .shuffle(7)
-            .batched(
-                batchsize=self.cfg.exp.valid_batch_size,
-                partial=False,
-            )
+        return wds.WebLoader(
+            self.valid_dataset,
+            batch_size=None,
+            num_workers=self.cfg.exp.num_workers,
+        ).batched(
+            batchsize=self.cfg.exp.valid_batch_size,
+            partial=False,
         )
 
     def test_dataloader(self):
@@ -156,9 +155,6 @@ class LeapLightningDataModule(LightningDataModule):
         end_year, end_month = (
             self.cfg.exp.train_end if mode == "train" else self.cfg.exp.valid_end
         )
-        if self.cfg.debug:
-            start_year, start_month = 1, 2
-            end_year, end_month = 1, 2
 
         for year in range(start_year, end_year + 1):
             for month in range(1, 13):
@@ -177,7 +173,7 @@ class LeapLightningDataModule(LightningDataModule):
         elif mode == "valid" and self.cfg.exp.valid_data_skip_mod:
             tar_list = tar_list[:: self.cfg.exp.valid_data_skip_mod]
 
-        print(mode, f"{len(tar_list)=}")
+        print(mode, f"{len(tar_list)=}", tar_list[-1])
         return tar_list
 
     def _sum_dataset_sizes(self, bucket_name, prefix):
@@ -198,9 +194,6 @@ class LeapLightningDataModule(LightningDataModule):
         end_year, end_month = (
             self.cfg.exp.train_end if mode == "train" else self.cfg.exp.valid_end
         )
-        if self.cfg.debug:
-            start_year, start_month = 1, 2
-            end_year, end_month = 1, 2
 
         total_size = 0
         for year in range(start_year, end_year + 1):
@@ -285,6 +278,8 @@ class LeapLightningModule(LightningModule):
             print("Using EMA")
             self.model_ema = ModelEmaV2(self.model, self.cfg.exp.ema.decay)
 
+        self.validation_name = f"{cfg.exp.valid_start[0]:02d}-{cfg.exp.valid_start[1]:02d}_{cfg.exp.valid_end[0]:02d}-{cfg.exp.valid_end[1]:02d}_{cfg.exp.valid_data_skip_mod}"
+
     def training_step(self, batch, batch_idx):
         mode = "train"
         x, y = batch
@@ -311,7 +306,7 @@ class LeapLightningModule(LightningModule):
         out = self.__pred(x, mode)
         loss = self.loss_fc(out, y)
         self.log(
-            f"{mode}_loss",
+            f"{mode}_loss/{self.validation_name}",
             loss.detach().item(),
             on_step=True,
             on_epoch=True,
@@ -365,7 +360,8 @@ class LeapLightningModule(LightningModule):
 
 
 def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
-    monitor = f"{cfg.exp.monitor}"
+    validation_name = f"{cfg.exp.valid_start[0]:02d}-{cfg.exp.valid_start[1]:02d}_{cfg.exp.valid_end[0]:02d}-{cfg.exp.valid_end[1]:02d}_{cfg.exp.valid_data_skip_mod}"
+    monitor = f"valid_loss/{validation_name}"
     dm = LeapLightningDataModule(cfg)
     model = LeapLightningModule(cfg)
     checkpoint_cb = ModelCheckpoint(
@@ -453,6 +449,7 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
     preds = Scaler(cfg).inv_scale_output(preds)
     print(type(preds), preds.shape)
     labels = torch.cat(labels).numpy()
+    labels = Scaler(cfg).inv_scale_output(labels)
 
     predict_df = pd.DataFrame(preds, columns=[i for i in range(preds.shape[1])])
     predict_df["id"] = range(len(predict_df))
@@ -521,7 +518,7 @@ def main(cfg: DictConfig) -> None:
     pl_logger = WandbLogger(
         name=exp_name,
         project="kaggle-leap",
-        mode="disabled",  # if cfg.debug else None,
+        mode="disabled" if cfg.debug else None,
     )
     pl_logger.log_hyperparams(cfg)
 
