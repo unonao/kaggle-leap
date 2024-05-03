@@ -71,11 +71,15 @@ np.save(output_path / "y_nanmax.npy", y_nanmax)
 y_nanstd = np.nanstd(y, axis=0)
 np.save(output_path / "y_nanstd.npy", y_nanstd)
 
-y_rms_np = np.sqrt(np.nanmean(y * y, axis=0)).ravel()
+y_rms_np = (
+    np.sqrt(np.nanmean(y.astype(np.float128) * y.astype(np.float128), axis=0))
+    .ravel()
+    .astype(np.float64)
+)
 np.save(output_path / "y_rms.npy", y_rms_np)
 
-y_sub = y - y_nanmean
-y_rms_sub_np = np.sqrt(np.nanmean(y_sub * y_sub, axis=0)).ravel()
+y_sub = (y - y_nanmean).astype(np.float128)
+y_rms_sub_np = np.sqrt(np.nanmean(y_sub * y_sub, axis=0)).ravel().astype(np.float64)
 np.save(output_path / "y_rms_sub.npy", y_rms_sub_np)
 print(
     f"{y_nanmean.shape=}, {y_nanmin.shape=}, {y_nanmax.shape=}, {y_nanstd.shape=}, {y_rms_np.shape=}, {y_rms_sub_np.shape=}"
@@ -85,7 +89,8 @@ print(
 # 内容チェック
 for i in [138]:
     print(f"{i=}, {x_nanmean[i]=}, {x_nanmin[i]=}, {x_nanmax[i]=}, {x_nanstd[i]=}")
-for i in [133, 193]:
+
+for i in [133]:
     print(
         f"{i=}, {y_nanmean[i]=}, {y_nanmin[i]=}, {y_nanmax[i]=}, {y_nanstd[i]=}, {y_rms_np[i]=}, {y_rms_sub_np[i]=}"
     )
