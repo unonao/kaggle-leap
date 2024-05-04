@@ -38,6 +38,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
 
+import utils
 import wandb
 from utils.metric import score
 
@@ -543,6 +544,20 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
         if cfg.debug:
             break
 
+    with utils.trace("save predict"):
+        _preds = torch.cat(preds).numpy()
+        preds = Scaler(cfg).inv_scale_output(_preds)
+        labels = torch.cat(labels).numpy()
+
+        original_predict_df = pd.DataFrame(
+            preds, columns=[i for i in range(preds.shape[1])]
+        ).reset_index()
+        original_label_df = pd.DataFrame(
+            labels, columns=[i for i in range(labels.shape[1])]
+        ).reset_index()
+        original_predict_df.to_parquet(output_path / "predict.parquet")
+        original_label_df.to_parquet(output_path / "label.parquet")
+
     # weight (weight zero もあるのでかけておく)
     ss_df = pl.read_csv(
         "input/leap-atmospheric-physics-ai-climsim/sample_submission.csv", n_rows=1
@@ -551,18 +566,12 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
         [x for x in ss_df.columns if x != "sample_id"]
     ).to_numpy()[0]
 
-    _preds = torch.cat(preds).numpy()
-    preds = Scaler(cfg).inv_scale_output(_preds) * weight_array
-    labels = torch.cat(labels).numpy() * weight_array
-
     predict_df = pd.DataFrame(
-        preds, columns=[i for i in range(preds.shape[1])]
+        preds * weight_array, columns=[i for i in range(preds.shape[1])]
     ).reset_index()
     label_df = pd.DataFrame(
-        labels, columns=[i for i in range(labels.shape[1])]
+        labels * weight_array, columns=[i for i in range(labels.shape[1])]
     ).reset_index()
-    predict_df.to_parquet(output_path / "predict.parquet")
-    label_df.to_parquet(output_path / "label.parquet")
 
     r2_scores = score(label_df, predict_df, "index", multioutput="raw_values")
     r2_score_dict = {
@@ -571,27 +580,6 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
     pickle.dump(r2_score_dict, open(output_path / "r2_score_dict.pkl", "wb"))
 
     r2_score = float(r2_scores.mean())
-    if r2_score < 100:
-        nonzero_idx = np.nonzero(r2_scores == np.min(r2_scores))
-        print(nonzero_idx)
-        ri = nonzero_idx[0][0]  # 代表して最初だけ
-        # ri 列目について、mseが最大のindexを取得
-        mse = (preds[:, ri] - labels[:, ri]) ** 2
-        base = (labels[:, ri] - labels[:, ri].mean()) ** 2
-        mse_index = np.nonzero(mse == np.max(mse))[0][0]
-        i = mse_index
-        j = ri
-        print(f"{i=}, {j=}")
-        print(f"{r2_scores[ri]=}, {mse.mean()=}, {mse[mse_index]=}, {base.mean()=}")
-        print(
-            f"{_preds[i,j]=},{_preds[:,j].mean()=}, {_preds[:,j].max()=}, {_preds[:,j].min()=}"
-        )
-        print(
-            f"{preds[i,j]=}, {preds[:,j].mean()=}, {preds[:,j].max()=}, {preds[:,j].min()=}"
-        )
-        print(
-            f"{labels[i,j]=}, {labels[:,j].mean()=}, {labels[:,j].max()=}, {labels[:,j].min()=}"
-        )
     print(f"{r2_score=}")
 
     wandb.log({f"r2_score/{valid_name}": r2_score})
