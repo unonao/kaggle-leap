@@ -34,7 +34,7 @@ y_sample_max_min = np.min(y_sample_max_list, axis=0)
 np.save(output_path / "y_sample_max_min.npy", y_sample_max)
 
 
-for diff_rate in [0, 0.1]:
+for diff_rate in [16.0, 4.0, 1.0, 0.5, 0.1, 0]:
     print(f"{diff_rate=}")
     y_diff = (y_sample_max_min - y_sample_min_max) * diff_rate
     y_lower_bound = y_sample_min_max - y_diff
