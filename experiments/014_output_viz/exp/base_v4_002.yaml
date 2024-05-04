@@ -1,0 +1,6 @@
+defaults:
+  - base_v4@_here_ # ベースの設定ファイルを指定する
+
+max_epochs: 100
+train_data_skip_mod: 4
+early_stopping_patience: 3
