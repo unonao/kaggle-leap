@@ -75,8 +75,60 @@ class Scaler:
             Path(cfg.exp.scale_dir) / f"y_upper_bound_{cfg.exp.norm_name}.npy"
         )
 
+    def scale_input_1d(self, x):
+        x = x[None, :]
+        x = self.scale_input(x)
+        x = x.reshape(-1)
+        return x
+
     def scale_input(self, x):
+        # x が 2d ではなく 1d の場合は 2d に変換
+        x_state_t_r = x[:, 1:60] / (x[:, 0:59] + self.eps)
+        x_state_t_l = x[:, 0:59] / (x[:, 1:60] + self.eps)
+        x_state_q_0001_r = x[:, 61:120] / (x[:, 60:119] + self.eps)
+        x_state_q_0001_l = x[:, 60:119] / (x[:, 61:120] + self.eps)
+        x_state_q0002_r = x[:, 121:180] / (x[:, 120:179] + self.eps)
+        x_state_q0002_l = x[:, 120:179] / (x[:, 121:180] + self.eps)
+        x_state_q0003_r = x[:, 181:240] / (x[:, 180:239] + self.eps)
+        x_state_q0003_l = x[:, 180:239] / (x[:, 181:240] + self.eps)
+        x_state_u_r = x[:, 241:300] / (x[:, 240:299] + self.eps)
+        x_state_u_l = x[:, 240:299] / (x[:, 241:300] + self.eps)
+        x_state_v_r = x[:, 301:360] / (x[:, 300:359] + self.eps)
+        x_state_v_l = x[:, 300:359] / (x[:, 301:360] + self.eps)
+        x_pbuf_N2O_r = x[:, -60:-1] / (x[:, -59:] + self.eps)
+        x_pbuf_N2O_l = x[:, -59:] / (x[:, -60:-1] + self.eps)
+        x_pbuf_CH4_r = x[:, -120:-61] / (x[:, -119:-60] + self.eps)
+        x_pbuf_CH4_l = x[:, -119:-60] / (x[:, -120:-61] + self.eps)
+        x_pbuf_ozone_r = x[:, -180:-121] / (x[:, -179:-120] + self.eps)
+        x_pbuf_ozone_l = x[:, -179:-120] / (x[:, -180:-121] + self.eps)
+
         x = (x - self.x_mean) / self.x_std
+
+        x = np.concatenate(
+            [
+                x,
+                x_state_t_r,
+                x_state_t_l,
+                x_state_q_0001_r,
+                x_state_q_0001_l,
+                x_state_q0002_r,
+                x_state_q0002_l,
+                x_state_q0003_r,
+                x_state_q0003_l,
+                x_state_u_r,
+                x_state_u_l,
+                x_state_v_r,
+                x_state_v_l,
+                x_pbuf_N2O_r,
+                x_pbuf_N2O_l,
+                x_pbuf_CH4_r,
+                x_pbuf_CH4_l,
+                x_pbuf_ozone_r,
+                x_pbuf_ozone_l,
+            ],
+            axis=1,
+        )
+
         # outlier_std_rate を超えたらclip
         return np.clip(
             x,
@@ -102,7 +154,10 @@ class Scaler:
             y <= self.y_upper_bound + self.eps, axis=1
         )
 
-        x = self.scale_input(x)
+        if x.ndim == 1:
+            x = self.scale_input_1d(x)
+        else:
+            x = self.scale_input(x)
         y = self.scale_output(y)
         return x, y, filter_bool
 
@@ -130,7 +185,7 @@ class LeapLightningDataModule(LightningDataModule):
             return self.x.shape[0]
 
         def __getitem__(self, index):
-            return torch.from_numpy(self.scaler.scale_input(self.x[index]))
+            return torch.from_numpy(self.scaler.scale_input_1d(self.x[index]))
 
     def train_dataloader(self):
         return (
@@ -435,13 +490,13 @@ class LeapLightningModule(LightningModule):
             optimizer,
             max_lr=cfg.exp.lr,
             steps_per_epoch=len(train_dataloader),
-            epochs=cfg.exp.max_epochs + 1,
+            epochs=cfg.exp.epochs + 1,
             pct_start=0.1,
         )
         """
         # 1epoch分をwarmupとするための記述
         num_warmup_steps = (
-            math.ceil(self.trainer.max_steps / self.cfg.exp.max_epochs) * 1
+            math.ceil(self.trainer.max_steps / self.cfg.exp.max_epoch) * 1
             if self.cfg.exp.scheduler.use_one_epoch_warmup
             else 0
         )

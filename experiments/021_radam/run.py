@@ -428,7 +428,17 @@ class LeapLightningModule(LightningModule):
         gc.collect()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.cfg.exp.lr)
+        optimizer = None
+        if self.cfg.exp.optimizer.name == "Adam":
+            optimizer = torch.optim.AdamW(
+                self.model.parameters(), lr=self.cfg.exp.optimizer.lr
+            )
+        elif self.cfg.exp.optimizer.name == "RAdam":
+            optimizer = torch.optim.RAdam(
+                self.model.parameters(),
+                lr=self.cfg.exp.optimizer.lr,
+                weight_decay=self.cfg.exp.optimizer.weight_decay,
+            )
 
         """
         scheduler = tc.optim.lr_scheduler.OneCycleLR(

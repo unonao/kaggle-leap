@@ -1,0 +1,6 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+max_epochs: 50
+scale_dir: misc/normalize_v5
+norm_name: "0.5"

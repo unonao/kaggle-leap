@@ -1,0 +1,5 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+scheduler:
+  use_one_epoch_warmup: False
