@@ -589,8 +589,8 @@ class LeapLightningModule(LightningModule):
             self.model_ema.update(self.model)
 
     def on_validation_epoch_end(self):
-        valid_preds = np.concatenate(self.valid_preds, axis=0)
-        valid_labels = np.concatenate(self.valid_labels, axis=0)
+        valid_preds = np.concatenate(self.valid_preds, axis=0).astype(np.float64)
+        valid_labels = np.concatenate(self.valid_labels, axis=0).astype(np.float64)
         valid_preds = self.scaler.inv_scale_output(valid_preds)
         r2_scores = r2_score(
             valid_labels[:, self.use_cols_index],
@@ -722,7 +722,7 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
     )
     model_module = LeapLightningModule.load_from_checkpoint(checkpoint_path, cfg=cfg)
     if cfg.exp.ema.use_ema:
-        model = model_module.model_ema.module
+        model_module.model = model_module.model_ema.module
     model = model_module.model
 
     dm = LeapLightningDataModule(cfg)
@@ -804,7 +804,7 @@ def predict_test(cfg: DictConfig, output_path: Path) -> None:
     )
     model_module = LeapLightningModule.load_from_checkpoint(checkpoint_path, cfg=cfg)
     if cfg.exp.ema.use_ema:
-        model = model_module.model_ema.module
+        model_module.model = model_module.model_ema.module
     model = model_module.model
 
     dm = LeapLightningDataModule(cfg)

@@ -470,7 +470,14 @@ class LeapModel(nn.Module):
         )  # (batch, 60, 25+embedding_dim) -> (batch, 60, same_height_hidden_sizes[-1])
 
         x, class_logits = self.unet(x.unsqueeze(1))
-        x = self.pooling(x)
+
+        #
+        x = x.squeeze(
+            1
+        )  # (batch, 1, 60, same_height_hidden_sizes[-1]) -> (batch, 60, same_height_hidden_sizes[-1])
+        x = self.pooling(
+            x
+        )  # (batch, 60, same_height_hidden_sizes[-1]) -> (batch, 60, 6)
 
         x = x.transpose(-1, -2)  # ([batch, 6, 60, 1] - > [batch, 1, 6, 60])
         x = x.flatten(start_dim=1)
@@ -596,8 +603,8 @@ class LeapLightningModule(LightningModule):
             self.model_ema.update(self.model)
 
     def on_validation_epoch_end(self):
-        valid_preds = np.concatenate(self.valid_preds, axis=0)
-        valid_labels = np.concatenate(self.valid_labels, axis=0)
+        valid_preds = np.concatenate(self.valid_preds, axis=0).astype(np.float64)
+        valid_labels = np.concatenate(self.valid_labels, axis=0).astype(np.float64)
         valid_preds = self.scaler.inv_scale_output(valid_preds)
         r2_scores = r2_score(
             valid_labels[:, self.use_cols_index],
@@ -687,7 +694,8 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
         max_epochs=cfg.exp.max_epochs,
         max_steps=cfg.exp.max_epochs
         * len(dm.train_dataset)
-        // cfg.exp.train_batch_size,
+        // cfg.exp.train_batch_size
+        // cfg.exp.accumulate_grad_batches,
         gradient_clip_val=cfg.exp.gradient_clip_val,
         accumulate_grad_batches=cfg.exp.accumulate_grad_batches,
         logger=pl_logger,
@@ -705,7 +713,7 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
         # resume_from_checkpoint=resume_from,
         num_sanity_val_steps=0,
         # sync_batchnorm=True,
-        check_val_every_n_epoch=cfg.exp.check_val_every_n_epoch,
+        val_check_interval=cfg.exp.val_check_interval,
     )
     trainer.fit(model, dm, ckpt_path=cfg.exp.resume_ckpt_path)
 
@@ -729,7 +737,7 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
     )
     model_module = LeapLightningModule.load_from_checkpoint(checkpoint_path, cfg=cfg)
     if cfg.exp.ema.use_ema:
-        model = model_module.model_ema.module
+        model_module.model = model_module.model_ema.module
     model = model_module.model
 
     dm = LeapLightningDataModule(cfg)
@@ -811,7 +819,7 @@ def predict_test(cfg: DictConfig, output_path: Path) -> None:
     )
     model_module = LeapLightningModule.load_from_checkpoint(checkpoint_path, cfg=cfg)
     if cfg.exp.ema.use_ema:
-        model = model_module.model_ema.module
+        model_module.model = model_module.model_ema.module
     model = model_module.model
 
     dm = LeapLightningDataModule(cfg)

@@ -46,7 +46,7 @@ fill_target: [
 
 # model
 model:
-  same_height_hidden_sizes: [120, 120]
+  same_height_hidden_sizes: [120, 120] # 6個にpoolingするので 最終層の次元数は6の倍数にする
   embedding_dim: 10
   last_pooling: avg # max, linear
 
@@ -56,30 +56,26 @@ norm_seq: False
 # Training
 max_epochs: 20
 early_stopping_patience: 2
-optimizer: 
-  name: AdamW
-  lr: 5e-3
-  weight_decay: 0.01
 num_workers: 8
 train_batch_size: 1
 valid_batch_size: 1
 
-
+# LightningModule
+scheduler:
+  use_one_epoch_warmup: True
+ema:
+  use_ema: True
+  decay: 0.9975
+optimizer: 
+  name: AdamW
+  lr: 5e-3
+  weight_decay: 0.01
 
 # trainer
 accelerator: auto
 precision: "32" # https://lightning.ai/docs/pytorch/stable/common/trainer.html#precision
 gradient_clip_val: 1.0
 accumulate_grad_batches: 4
-check_val_every_n_epoch: 1
 resume_ckpt_path: null
+val_check_interval: null # 学習データ量増やしたら設定しておくと良さそう
 
-
-# LightningModule
-
-scheduler:
-  use_one_epoch_warmup: True
-
-ema:
-  use_ema: True
-  decay: 0.9975
