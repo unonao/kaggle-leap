@@ -76,10 +76,18 @@ class Scaler:
         )
 
     def scale_input(self, x):
-        x = (x - self.x_mean) / self.x_std
+        _x = (x - self.x_mean) / self.x_std
+
+        if self.cfg.exp.norm_seq:
+            # state_t は150~350の範囲でnormalize
+            if x.ndim == 1:
+                _x[:60] = (x[:60] - 250) / (350 - 150)
+            else:
+                _x[:, :60] = (x[:, :60] - 250) / (350 - 150)
+
         # outlier_std_rate を超えたらclip
         return np.clip(
-            x,
+            _x,
             -self.cfg.exp.outlier_std_rate,
             self.cfg.exp.outlier_std_rate,
         )
@@ -270,12 +278,32 @@ class LeapLightningDataModule(LightningDataModule):
 
 
 class LeapModel(nn.Module):
-    def __init__(self, input_size, hidden_sizes, output_size):
+    def __init__(
+        self,
+        input_size,
+        output_size,
+        hidden_sizes=[512, 512],
+        same_height_hidden_sizes=[60, 20],
+        embedding_dim=5,
+    ):
         super().__init__()
+        num_embeddings = 60
+
+        self.constant16_encoder = nn.Linear(1, 60)
+        layers = []
+        previous_size = 9 + 16 + embedding_dim
+        for hidden_size in same_height_hidden_sizes:
+            layers.append(nn.Linear(previous_size, hidden_size))
+            layers.append(nn.LayerNorm(hidden_size))
+            layers.append(nn.LeakyReLU(inplace=True))
+            previous_size = hidden_size
+        self.same_height_encoder = nn.Sequential(*layers)
+
+        self.positional_embedding = nn.Embedding(num_embeddings, embedding_dim)
 
         # Initialize the layers
         layers = []
-        previous_size = input_size
+        previous_size = same_height_hidden_sizes[-1] * 60
         for hidden_size in hidden_sizes:
             layers.append(nn.Linear(previous_size, hidden_size))
             layers.append(nn.LayerNorm(hidden_size))  # Normalization layer
@@ -287,6 +315,41 @@ class LeapModel(nn.Module):
         self.layers = nn.Sequential(*layers)
 
     def forward(self, x):
+        x_state_t = x[:, :60].unsqueeze(-1)
+        x_state_q0001 = x[:, 60:120].unsqueeze(-1)
+        x_state_q0002 = x[:, 120:180].unsqueeze(-1)
+        x_state_q0003 = x[:, 180:240].unsqueeze(-1)
+        x_state_u = x[:, 240:300].unsqueeze(-1)
+        x_state_v = x[:, 300:360].unsqueeze(-1)
+        x_constant_16 = x[:, 360:376].unsqueeze(-1)
+        x_constant_16 = self.constant16_encoder(x_constant_16).transpose(1, 2)
+        x_pbuf_ozone = x[:, 376:436].unsqueeze(-1)
+        x_pbuf_CH4 = x[:, 436:496].unsqueeze(-1)
+        x_pbuf_N2O = x[:, 496:556].unsqueeze(-1)
+        x_position = self.positional_embedding(
+            torch.LongTensor(range(60)).repeat(x.shape[0], 1).to(x.device)
+        )
+
+        x = torch.cat(
+            [
+                x_state_t,
+                x_state_q0001,
+                x_state_q0002,
+                x_state_q0003,
+                x_state_u,
+                x_state_v,
+                x_constant_16,
+                x_pbuf_ozone,
+                x_pbuf_CH4,
+                x_pbuf_N2O,
+                x_position,
+            ],
+            dim=2,
+        )  #  (batch, 60, 10+embedding_dim)
+
+        x = self.same_height_encoder(x)
+        x = x.flatten(start_dim=1)
+
         return self.layers(x)
 
 

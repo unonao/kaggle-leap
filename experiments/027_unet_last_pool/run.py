@@ -15,6 +15,8 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import webdataset as wds
 from google.cloud import storage
 from hydra.core.hydra_config import HydraConfig
@@ -76,10 +78,18 @@ class Scaler:
         )
 
     def scale_input(self, x):
-        x = (x - self.x_mean) / self.x_std
+        _x = (x - self.x_mean) / self.x_std
+
+        if self.cfg.exp.norm_seq:
+            # state_t は150~350の範囲でnormalize
+            if x.ndim == 1:
+                _x[:60] = (x[:60] - 250) / (350 - 150)
+            else:
+                _x[:, :60] = (x[:, :60] - 250) / (350 - 150)
+
         # outlier_std_rate を超えたらclip
         return np.clip(
-            x,
+            _x,
             -self.cfg.exp.outlier_std_rate,
             self.cfg.exp.outlier_std_rate,
         )
@@ -269,25 +279,204 @@ class LeapLightningDataModule(LightningDataModule):
         return dataset
 
 
-class LeapModel(nn.Module):
-    def __init__(self, input_size, hidden_sizes, output_size):
+class DoubleConv(nn.Module):
+    """(convolution => [BN] => ReLU) * 2
+    height and width size will be changed to size-4.
+    """
+
+    def __init__(self, in_channels, out_channels, mid_channels=None):
         super().__init__()
-
-        # Initialize the layers
-        layers = []
-        previous_size = input_size
-        for hidden_size in hidden_sizes:
-            layers.append(nn.Linear(previous_size, hidden_size))
-            layers.append(nn.LayerNorm(hidden_size))  # Normalization layer
-            layers.append(nn.LeakyReLU(inplace=True))  # Activation
-            previous_size = hidden_size
-
-        layers.append(nn.Linear(previous_size, output_size))
-
-        self.layers = nn.Sequential(*layers)
+        if not mid_channels:
+            mid_channels = out_channels
+        self.double_conv = nn.Sequential(
+            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(mid_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
 
     def forward(self, x):
-        return self.layers(x)
+        return self.double_conv(x)
+
+
+class Down(nn.Module):
+    """Downscaling with maxpool then double conv"""
+
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.maxpool_conv = nn.Sequential(
+            nn.MaxPool2d(2), DoubleConv(in_channels, out_channels)
+        )
+
+    def forward(self, x):
+        return self.maxpool_conv(x)
+
+
+class Up(nn.Module):
+    """Upscaling then double conv"""
+
+    def __init__(self, in_channels, out_channels, bilinear=True):
+        super().__init__()
+
+        # if bilinear, use the normal convolutions to reduce the number of channels
+        if bilinear:
+            self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            self.conv = DoubleConv(in_channels, out_channels, in_channels // 2)
+        else:
+            self.up = nn.ConvTranspose2d(
+                in_channels, in_channels // 2, kernel_size=2, stride=2
+            )
+            self.conv = DoubleConv(in_channels, out_channels)
+
+    def forward(self, x1, x2):
+        x1 = self.up(x1)
+        # input is CHW
+        diffY = x2.size()[2] - x1.size()[2]
+        diffX = x2.size()[3] - x1.size()[3]
+
+        x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2, diffY // 2, diffY - diffY // 2])
+        # if you have padding issues, see
+        # https://github.com/HaiyongJiang/U-Net-Pytorch-Unstructured-Buggy/commit/0e854509c2cea854e247a9c615f175f76fbb2e3a
+        # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
+        x = torch.cat([x2, x1], dim=1)
+        return self.conv(x)
+
+
+class OutConv(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(OutConv, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+    def forward(self, x):
+        return self.conv(x)
+
+
+class ClassificationHead(nn.Sequential):
+    # https://github.com/qubvel/segmentation_models.pytorch/blob/3bf4d6ef2bc9d41c2ab3436838aa22375dd0f23a/segmentation_models_pytorch/base/heads.py#L13
+    def __init__(self, in_channels, classes, pooling="avg", dropout=0.2):
+        if pooling not in ("max", "avg"):
+            raise ValueError(
+                "Pooling should be one of ('max', 'avg'), got {}.".format(pooling)
+            )
+        pool = nn.AdaptiveAvgPool2d(1) if pooling == "avg" else nn.AdaptiveMaxPool2d(1)
+        flatten = nn.Flatten()
+        dropout = nn.Dropout(p=dropout, inplace=True) if dropout else nn.Identity()
+        linear = nn.Linear(in_channels, classes, bias=True)
+        super().__init__(pool, flatten, dropout, linear)
+
+
+class UNet(nn.Module):
+    def __init__(self, n_channels, n_classes, n_class_head, bilinear=False):
+        super(UNet, self).__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        self.bilinear = bilinear
+
+        self.inc = DoubleConv(n_channels, 32)
+        self.down1 = Down(32, 64)
+        self.down2 = Down(64, 128)
+        factor = 2 if bilinear else 1
+        self.down3 = Down(128, 256 // factor)
+        self.up1 = Up(256, 128 // factor, bilinear)
+        self.up2 = Up(128, 64 // factor, bilinear)
+        self.up3 = Up(64, 32, bilinear)
+        self.outc = OutConv(32, n_classes)
+
+        self.class_head = ClassificationHead(
+            256 // factor, n_class_head, pooling="avg", dropout=0.2
+        )
+
+    def forward(self, x):
+        x1 = self.inc(x)  # (b, 1, 60, 60) -> (b, 64, 56, 56)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        x = self.up1(x4, x3)
+        x = self.up2(x, x2)
+        x = self.up3(x, x1)
+        logits = self.outc(x)
+        class_logits = self.class_head(x4)
+        return logits, class_logits
+
+
+class LeapModel(nn.Module):
+    def __init__(
+        self,
+        same_height_hidden_sizes=[60, 60],
+        embedding_dim=5,
+        last_pooling="avg",
+    ):
+        super().__init__()
+        num_embeddings = 60
+        self.positional_embedding = nn.Embedding(num_embeddings, embedding_dim)
+        self.constant16_encoder = nn.Linear(1, 60)
+
+        layers = []
+        previous_size = 9 + 16 + embedding_dim
+        for hidden_size in same_height_hidden_sizes:
+            layers.append(nn.Linear(previous_size, hidden_size))
+            layers.append(nn.LayerNorm(hidden_size))
+            layers.append(nn.LeakyReLU(inplace=True))
+            previous_size = hidden_size
+        self.same_height_encoder = nn.Sequential(*layers)
+
+        self.unet = UNet(n_channels=1, n_classes=1, n_class_head=8, bilinear=False)
+
+        self.pooling = None
+        if last_pooling == "avg":
+            self.pooling = nn.AdaptiveMaxPool1d(6)
+        elif last_pooling == "max":
+            self.pooling = nn.AdaptiveAvgPool1d(6)
+        elif last_pooling == "linear":
+            self.pooling = nn.Linear(same_height_hidden_sizes[-1], 6)
+
+    def forward(self, x):
+        x_state_t = x[:, :60].unsqueeze(-1)
+        x_state_q0001 = x[:, 60:120].unsqueeze(-1)
+        x_state_q0002 = x[:, 120:180].unsqueeze(-1)
+        x_state_q0003 = x[:, 180:240].unsqueeze(-1)
+        x_state_u = x[:, 240:300].unsqueeze(-1)
+        x_state_v = x[:, 300:360].unsqueeze(-1)
+        x_constant_16 = x[:, 360:376].unsqueeze(-1)
+        x_constant_16 = self.constant16_encoder(x_constant_16).transpose(1, 2)
+        x_pbuf_ozone = x[:, 376:436].unsqueeze(-1)
+        x_pbuf_CH4 = x[:, 436:496].unsqueeze(-1)
+        x_pbuf_N2O = x[:, 496:556].unsqueeze(-1)
+        x_position = self.positional_embedding(
+            torch.LongTensor(range(60)).repeat(x.shape[0], 1).to(x.device)
+        )
+
+        x = torch.cat(
+            [
+                x_state_t,
+                x_state_q0001,
+                x_state_q0002,
+                x_state_q0003,
+                x_state_u,
+                x_state_v,
+                x_constant_16,
+                x_pbuf_ozone,
+                x_pbuf_CH4,
+                x_pbuf_N2O,
+                x_position,
+            ],
+            dim=2,
+        )  #  (batch, 60, 25+embedding_dim)
+
+        x = self.same_height_encoder(
+            x
+        )  # (batch, 60, 25+embedding_dim) -> (batch, 60, same_height_hidden_sizes[-1])
+
+        x, class_logits = self.unet(x.unsqueeze(1))
+        x = self.pooling(x)
+
+        x = x.transpose(-1, -2)  # ([batch, 6, 60, 1] - > [batch, 1, 6, 60])
+        x = x.flatten(start_dim=1)
+        x = torch.cat([x, class_logits], dim=1)
+
+        return x
 
 
 class LeapLightningModule(LightningModule):

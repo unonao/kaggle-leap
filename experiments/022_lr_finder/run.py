@@ -7,7 +7,6 @@ import pickle
 import random
 import shutil
 import sys
-import time
 from pathlib import Path
 
 import hydra
@@ -16,9 +15,8 @@ import pandas as pd
 import polars as pl
 import torch
 import webdataset as wds
-from google.cloud import storage
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 from pytorch_lightning import (
     LightningDataModule,
     LightningModule,
@@ -33,6 +31,7 @@ from pytorch_lightning.callbacks import (
     RichProgressBar,
 )
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.tuner import Tuner
 from sklearn.metrics import r2_score
 from timm.utils import ModelEmaV2
 from torch import nn
@@ -295,6 +294,7 @@ class LeapLightningModule(LightningModule):
         super().__init__()
         self.cfg = cfg
         self.model = LeapModel(**cfg.exp.model)
+        self.learning_rate = cfg.exp.optimizer.lr
         self.scaler = Scaler(cfg)
         self.loss_fc = nn.MSELoss()  # Using MSE for regression
         self.model_ema = None
@@ -429,16 +429,14 @@ class LeapLightningModule(LightningModule):
 
     def configure_optimizers(self):
         optimizer = None
-        if self.cfg.exp.optimizer.name == "AdamW":
+        if self.cfg.exp.optimizer.name == "Adam":
             optimizer = torch.optim.AdamW(
-                self.model.parameters(),
-                lr=self.cfg.exp.optimizer.lr,
-                weight_decay=self.cfg.exp.optimizer.weight_decay,
+                self.model.parameters(), lr=self.learning_rate
             )
         elif self.cfg.exp.optimizer.name == "RAdam":
             optimizer = torch.optim.RAdam(
                 self.model.parameters(),
-                lr=self.cfg.exp.optimizer.lr,
+                lr=self.learning_rate,
                 weight_decay=self.cfg.exp.optimizer.weight_decay,
             )
 
@@ -518,7 +516,17 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
         # sync_batchnorm=True,
         check_val_every_n_epoch=cfg.exp.check_val_every_n_epoch,
     )
-    trainer.fit(model, dm, ckpt_path=cfg.exp.resume_ckpt_path)
+
+    tuner = Tuner(trainer)
+    lr_finder = tuner.lr_find(model, datamodule=dm)
+    print(lr_finder.results)
+    fig = lr_finder.plot(suggest=True)
+    fig.savefig(output_path / "lr_finder.png")
+    new_lr = lr_finder.suggestion()
+    print(f"{new_lr=}")
+    cfg.exp.optimizer.lr = new_lr
+
+    trainer.fit(model, dm)
 
     # copy checkpoint_cb.best_model_path
     shutil.copy(

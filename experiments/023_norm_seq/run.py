@@ -76,10 +76,18 @@ class Scaler:
         )
 
     def scale_input(self, x):
-        x = (x - self.x_mean) / self.x_std
+        _x = (x - self.x_mean) / self.x_std
+
+        if self.cfg.exp.norm_seq:
+            # state_t は150~350の範囲でnormalize
+            if x.ndim == 1:
+                _x[:60] = (x[:60] - 250) / (350 - 150)
+            else:
+                _x[:, :60] = (x[:, :60] - 250) / (350 - 150)
+
         # outlier_std_rate を超えたらclip
         return np.clip(
-            x,
+            _x,
             -self.cfg.exp.outlier_std_rate,
             self.cfg.exp.outlier_std_rate,
         )

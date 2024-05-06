@@ -1,0 +1,14 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+
+
+# model
+model:
+  input_size: 556
+  output_size: 368
+  hidden_sizes : [1024, 1024]
+  same_height_hidden_sizes: [60, 60]
+  embedding_dim: 10
+
+

@@ -1,0 +1,7 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+optimizer: 
+  name: RAdam
+  lr: 5e-3
+  weight_decay: 0.01

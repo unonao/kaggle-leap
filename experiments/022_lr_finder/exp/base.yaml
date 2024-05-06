@@ -57,7 +57,7 @@ optimizer:
 num_workers: 8
 train_batch_size: 4
 valid_batch_size: 4
-resume_ckpt_path: null
+
 max_epochs: 50
 
 early_stopping_patience: 2
