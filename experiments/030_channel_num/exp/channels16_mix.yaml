@@ -1,0 +1,7 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+model:
+  n_base_channels: 16
+
+precision: "16-mixed" # https://lightning.ai/docs/pytorch/stable/common/trainer.html#precision

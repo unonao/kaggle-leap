@@ -1,0 +1,7 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+model:
+  same_height_hidden_sizes: [120, 48] # 6個にpoolingするので 最終層の次元数は6の倍数にする
+
+precision: "16-mixed" # https://lightning.ai/docs/pytorch/stable/common/trainer.html#precision
