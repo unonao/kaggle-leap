@@ -1,0 +1,6 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+model:
+  n_feat_channels: 8
+  same_height_hidden_sizes: [128, 512, 48]
