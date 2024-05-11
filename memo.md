@@ -1,3 +1,3 @@
 # メモ
 
-python experiments/042_unet_sf/run.py exp=all
+python experiments/032_feature_channel/run.py exp=feat_channel8_clip40
