@@ -1,0 +1,18 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+  
+# model
+model:
+  same_height_hidden_sizes: [96, 96] 
+  embedding_dim: 10
+  last_pooling: avg # max, linear
+  encoder_params:
+    encoder_dim: 96 # 6の倍数
+    num_layers: 4
+    num_attention_heads: 4
+    feed_forward_expansion_factor: 4
+    conv_expansion_factor: 2
+    feed_forward_dropout_p: 0.0
+    attention_dropout_p: 0.0
+    conv_dropout_p: 0.0
+    conv_kernel_size: 31

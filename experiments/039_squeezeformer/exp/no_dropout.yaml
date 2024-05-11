@@ -1,0 +1,8 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+# model
+model:
+  encoder_params:
+    feed_forward_dropout_p: 0.0
+    attention_dropout_p: 0.0
+    conv_dropout_p: 0.0

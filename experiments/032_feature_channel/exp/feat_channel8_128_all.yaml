@@ -1,0 +1,11 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+train_data_skip_mod: 1
+val_check_interval: 5000
+train_batch_size: 4
+accumulate_grad_batches: 1
+
+model:
+  n_base_channels: 128
+  n_feat_channels: 8

@@ -12,3 +12,4 @@ RUN pip install --no-cache-dir \
 
 RUN pip install netCDF4 webdataset
 RUN python3 -m pip install papermill
+RUN pip install --upgrade seaborn scikit-learn

@@ -1,0 +1,8 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+model:
+  n_feat_channels: 8
+
+
+outlier_std_rate: 20
