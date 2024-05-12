@@ -174,5 +174,5 @@ if __name__ == "__main__":
     pressures = cal_pressures(df)
     features_dict = process_features(df[:, 1:557].to_numpy(), pressures)
 
-    for diff_rate in [16.0, 4.0, 1.0, 0.5, 0.1, 0]:
+    for diff_rate in [1e60, 1024, 256, 64, 16, 4.0, 1.0, 0]:
         cal_stats_x_y(df, y_sample_min_max, y_sample_max_min, diff_rate, features_dict)
