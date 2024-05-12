@@ -85,7 +85,7 @@ def process_features(x_array, pressures_array):
     )
 
     result_dict = {
-        "base": x_array[:, 1:557],
+        "base": x_array[:, :556],
         "pressures": pressures_array,
         "water": water_array,
         "water_energy": water_energy_array,
