@@ -10,7 +10,7 @@ import polars as pl
 import xarray as xr
 from tqdm import tqdm
 
-debug = True
+debug = False
 n_sampling = 9000 if debug else int(625000 * 0.8)
 iter_sampling = 10 if debug else 100
 
