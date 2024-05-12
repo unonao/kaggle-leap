@@ -1,3 +1,3 @@
 # メモ
 
-python experiments/032_feature_channel/run.py exp=feat_channel8_clip40
+python experiments/045_outlier_mae/run.py exp=002_all
