@@ -1,0 +1,6 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+norm_name: "1.0"
+
+

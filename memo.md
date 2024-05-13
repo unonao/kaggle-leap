@@ -1,3 +1,4 @@
 # メモ
 
-python experiments/045_outlier_mae/run.py exp=002_all
+python experiments/049_phisics_v2/run.py exp=002
+python experiments/049_phisics_v2/run.py exp=003
