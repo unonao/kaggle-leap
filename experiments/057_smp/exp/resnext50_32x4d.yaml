@@ -1,0 +1,9 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+
+# model
+model:
+  encoder_name: resnext50_32x4d
+  encoder_weights: imagenet
+
