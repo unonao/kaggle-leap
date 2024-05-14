@@ -1,0 +1,8 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+# model
+model:
+  encoder_name: mit_b0
+  encoder_weights: imagenet
+  n_feat_channels: 3

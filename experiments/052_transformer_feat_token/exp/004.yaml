@@ -1,0 +1,20 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+norm_name: "1e+60"
+early_stopping_patience: 3
+
+
+seq_feats: [
+  pressures,
+  water,
+  water_energy,
+  temp_energy,
+  temp_water_energy,
+  u_energy,
+  v_energy,
+  wind_energy,
+  wind_vec,
+]
+scalar_feats: [
+]

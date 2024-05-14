@@ -13,3 +13,5 @@ RUN pip install --no-cache-dir \
 RUN pip install netCDF4 webdataset
 RUN python3 -m pip install papermill
 RUN pip install --upgrade seaborn scikit-learn
+RUN pip install segmentation-models-pytorch
+RUN python3 -m pip install git+https://github.com/sail-sg/Adan.git
