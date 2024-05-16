@@ -44,26 +44,11 @@ fill_target: [
   ptend_q0002_27,
 ]
 
+
 seq_feats: [
-  pressures,
   water,
-  water_energy,
-  temp_energy,
-  temp_water_energy,
-  u_energy,
-  v_energy,
-  wind_energy,
-  wind_vec,
 ]
 scalar_feats: [
-  sum_energy,
-  sum_flux,
-  energy_diff,
-  bowen_ratio,
-  sum_surface_stress,
-  net_radiative_flux,
-  global_solar_irradiance,
-  global_longwave_flux,
 ]
 
 
@@ -72,6 +57,7 @@ scalar_feats: [
 model:
   same_height_hidden_sizes: [120, 60] # 6個にpoolingするので 最終層の次元数は6の倍数にする
   embedding_dim: 10
+  categorical_embedding_dim: 5
   last_pooling: avg # max, linear
   dropout: 0.2
   bilinear: False

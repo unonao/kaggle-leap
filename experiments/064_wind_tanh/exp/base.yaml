@@ -45,28 +45,11 @@ fill_target: [
 ]
 
 seq_feats: [
-  pressures,
   water,
-  water_energy,
-  temp_energy,
-  temp_water_energy,
-  u_energy,
-  v_energy,
-  wind_energy,
-  wind_vec,
 ]
 scalar_feats: [
-  sum_energy,
-  sum_flux,
-  energy_diff,
-  bowen_ratio,
-  sum_surface_stress,
-  net_radiative_flux,
-  global_solar_irradiance,
-  global_longwave_flux,
 ]
-
-
+triangle_loss_weight: 0.1
 
 # model
 model:

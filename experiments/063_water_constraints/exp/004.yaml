@@ -1,0 +1,13 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+modes: [valid, test, viz]
+
+
+seq_feats: [
+  water,
+]
+scalar_feats: [
+]
+
+
+pred_checkpoint_path: output/experiments/054_adan/004/checkpoints/best_model.ckpt

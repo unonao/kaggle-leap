@@ -1,0 +1,16 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+
+train_data_skip_mod: 1
+val_check_interval: 20000
+
+seq_feats: [
+  water,
+]
+scalar_feats: [
+]
+
+
+model:
+  embedding_dim: 1

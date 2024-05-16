@@ -68,6 +68,7 @@ scalar_feats: [
 
 
 
+
 # model
 model:
   same_height_hidden_sizes: [120, 60] # 6個にpoolingするので 最終層の次元数は6の倍数にする
@@ -79,7 +80,7 @@ model:
   n_feat_channels: 8
 
 
-
+explicit_output_scaling: True
 norm_seq: False
 
 # Training
