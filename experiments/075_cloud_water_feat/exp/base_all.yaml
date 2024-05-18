@@ -1,0 +1,10 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+pred_checkpoint_path: output/experiments/070_input_all/base_all/checkpoints/best_model.ckpt
+
+train_data_skip_mod: 1
+val_check_interval: 20000
+
+ema:
+  use_ema: True
+  decay: 0.9998

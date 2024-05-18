@@ -80,6 +80,8 @@ class Scaler:
                 "rb",
             )
         )
+        self.feat_mean_dict["cloud_snow_rate"] = 0.0
+        self.feat_std_dict["cloud_snow_rate"] = 1.0
         self.y_mean = np.load(
             Path(cfg.exp.scale_dir) / f"y_nanmean_{cfg.exp.norm_name}.npy"
         )
@@ -111,6 +113,17 @@ class Scaler:
         pressures_array = np.diff(pressures_array, n=1)
 
         feats = [x_array[:, :556]]
+        if "cloud_snow_rate" in self.cfg.exp.seq_feats:
+            cloud_snow_rate_array = (
+                np.clip(
+                    x_array[:, 180:240]
+                    / (x_array[:, 120:180] + x_array[:, 180:240] + self.eps),
+                    0,
+                    1,
+                )
+                - 0.5
+            )
+            feats.append(cloud_snow_rate_array)
         if "cloud_water" in self.cfg.exp.seq_feats:
             cloud_water_array = x_array[:, 120:180] + x_array[:, 180:240]
             feats.append(cloud_water_array)
@@ -206,28 +219,14 @@ class Scaler:
         ), x_cat
 
     def scale_output(self, y):
-        # cloud water は合計値にする
-        y[:, 120:180] += y[:, 180:240]
-        y[:, 180:240] = y[:, 120:180]
         y = (y - self.y_mean) / self.y_rms_sub
         return y
 
-    def inv_scale_output(self, y, origional_x):
+    def inv_scale_output(self, y):
         y = y * self.y_rms_sub + self.y_mean
         for i in range(self.y_rms_sub.shape[0]):
             if self.y_rms_sub[i] < self.eps * 1.1:
                 y[:, i] = self.y_mean[i]
-
-        # cloud water を元に戻す
-        pred_cloud_water = y[:, 120:180]
-        cloud_water = origional_x[:, 120:180] + origional_x[:, 180:240]
-        no_water_index = cloud_water == 0
-
-        # 一旦仮置き
-        water_ratio = origional_x[:, 120:180] / (cloud_water + self.eps)
-        ice_ratio = origional_x[:, 180:240] / (cloud_water + self.eps)
-        y[:, 120:180] = pred_cloud_water * water_ratio
-        y[:, 180:240] = pred_cloud_water * ice_ratio
 
         return y
 
@@ -279,7 +278,6 @@ class LeapLightningDataModule(LightningDataModule):
             return (
                 torch.from_numpy(x),
                 torch.from_numpy(x_cat),
-                torch.from_numpy(original_x),
             )
 
     def train_dataloader(self):
@@ -628,15 +626,15 @@ class LeapModel(nn.Module):
             n_base_channels=n_base_channels,
         )
 
-        self.t_head = MLP(5 + n_base_channels, same_height_hidden_sizes + [1])
-        self.q1_head = MLP(6 + n_base_channels, same_height_hidden_sizes + [1])
-        self.q23_head = MLP(6 + n_base_channels, same_height_hidden_sizes + [1])
+        self.t_head = MLP(8 + n_base_channels, same_height_hidden_sizes + [1])
+        self.q_head = MLP(9 + n_base_channels, same_height_hidden_sizes + [3])
         self.wind_head = nn.ModuleList(
-            [MLP(6 + n_base_channels, same_height_hidden_sizes + [1]) for _ in range(2)]
+            [MLP(8 + n_base_channels, same_height_hidden_sizes + [1]) for _ in range(2)]
         )
 
     def forward(self, x, x_cat):
-        x_cloud_water = x[:, 556 : 556 + 60].unsqueeze(-1)
+        x_cloud_snow_rate_array = x[:, 556 : 556 + 60].unsqueeze(-1)
+        x_cloud_water = x[:, 556 + 60 : 556 + 120].unsqueeze(-1)
         x_state_t = x[:, :60].unsqueeze(-1)
         x_state_q0001 = x[:, 60:120].unsqueeze(-1)
         x_state_q0002 = x[:, 120:180].unsqueeze(-1)
@@ -690,13 +688,13 @@ class LeapModel(nn.Module):
         input_list.append(x_cat)
 
         #  (batch, 60, dim)
-        x_input = torch.cat(
+        x = torch.cat(
             input_list,
             dim=2,
         )
 
         # (batch, 60, dim) -> (batch, 60, same_height_hidden_sizes[-1]*n_feat_channels)
-        x = self.same_height_encoder(x_input)
+        x = self.same_height_encoder(x)
 
         x = x.transpose(-1, -2).unsqueeze(-1)
         x, class_logits = self.unet(x)
@@ -709,7 +707,10 @@ class LeapModel(nn.Module):
                 [
                     x_state_t,
                     x_state_q0001,
+                    x_state_q0002,
+                    x_state_q0003,
                     x_cloud_water,
+                    x_cloud_snow_rate_array,
                     x_state_u,
                     x_state_v,
                     x,
@@ -717,27 +718,16 @@ class LeapModel(nn.Module):
                 dim=2,
             )
         )  # -> (batch, 60, 1)
-        out_q1 = self.q1_head(
+        out_q = self.q_head(
             torch.cat(
                 [
                     x_state_t,
                     out_t,
                     x_state_q0001,
+                    x_state_q0002,
+                    x_state_q0003,
                     x_cloud_water,
-                    x_state_u,
-                    x_state_v,
-                    x,
-                ],
-                dim=2,
-            )
-        )
-        out_q23 = self.q23_head(
-            torch.cat(
-                [
-                    x_state_t,
-                    out_t,
-                    x_state_q0001,
-                    x_cloud_water,
+                    x_cloud_snow_rate_array,
                     x_state_u,
                     x_state_v,
                     x,
@@ -751,9 +741,11 @@ class LeapModel(nn.Module):
                     x_state_t,
                     out_t,
                     x_state_q0001,
+                    x_state_q0002,
+                    x_state_q0003,
                     x_cloud_water,
+                    x_cloud_snow_rate_array,
                     x_state_u,
-                    x_state_v,
                     x,
                 ],
                 dim=2,
@@ -765,8 +757,10 @@ class LeapModel(nn.Module):
                     x_state_t,
                     out_t,
                     x_state_q0001,
+                    x_state_q0002,
+                    x_state_q0003,
                     x_cloud_water,
-                    x_state_u,
+                    x_cloud_snow_rate_array,
                     x_state_v,
                     x,
                 ],
@@ -774,7 +768,7 @@ class LeapModel(nn.Module):
             )
         )
 
-        out = torch.cat([out_t, out_q1, out_q23, out_q23, out_u, out_v], dim=2)
+        out = torch.cat([out_t, out_q, out_u, out_v], dim=2)
         out = out.transpose(-1, -2)
         out = out.flatten(start_dim=1)
         out = torch.cat([out, class_logits], dim=1)
@@ -919,7 +913,7 @@ class LeapLightningModule(LightningModule):
         valid_original_xs = np.concatenate(self.valid_original_xs, axis=0).astype(
             np.float64
         )
-        valid_preds = self.scaler.inv_scale_output(valid_preds, valid_original_xs)
+        valid_preds = self.scaler.inv_scale_output(valid_preds)
         valid_preds[:, self.fill_target_index] = valid_original_xs[
             :, self.fill_target_index
         ] * (-1 / 1200)
@@ -1102,8 +1096,7 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
 
     with utils.trace("save predict"):
         original_xs = torch.cat(original_xs).numpy()
-        _preds = torch.cat(preds).numpy()
-        preds = Scaler(cfg).inv_scale_output(_preds, original_xs)
+        preds = Scaler(cfg).inv_scale_output(torch.cat(preds).numpy())
         labels = torch.cat(labels).numpy()
 
         original_xs_df = pd.DataFrame(
@@ -1127,6 +1120,13 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
         del original_label_df
         gc.collect()
 
+    # fill_target で指定された列を埋める
+    for col in cfg.exp.fill_target:
+        index = cfg.cols.col_names.index(col)
+        preds[:, index] = original_xs[:, index] / (-1200)
+    del original_xs
+    gc.collect()
+
     # weight (weight zero もあるのでかけておく)
     ss_df = pl.read_csv(
         "input/leap-atmospheric-physics-ai-climsim/sample_submission.csv", n_rows=1
@@ -1134,12 +1134,6 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
     weight_array = ss_df.select(
         [x for x in ss_df.columns if x != "sample_id"]
     ).to_numpy()[0]
-
-    # fill_target で指定された列を埋める
-    for col in cfg.exp.fill_target:
-        index = cfg.cols.col_names.index(col)
-        preds[:, index] = original_xs[:, index] / (-1200)
-
     predict_df = pd.DataFrame(
         preds * weight_array, columns=[i for i in range(preds.shape[1])]
     ).reset_index()
@@ -1184,21 +1178,18 @@ def predict_test(cfg: DictConfig, output_path: Path) -> None:
     dm = LeapLightningDataModule(cfg)
     dataloader, test_df = dm.test_dataloader()
     preds = []
-    original_xs = []
     model = model.to("cuda")
     model.eval()
-    for x, x_cat, original_x in tqdm(dataloader):
+    for x, x_cat in tqdm(dataloader):
         x = x.to("cuda")
         x_cat = x_cat.to("cuda")
         # webdatasetとは違い、batchでの読み出しではないのでflattenは必要ない
         with torch.no_grad():
             out = model(x.to(torch_dtype), x_cat.to(torch.long))
         preds.append(out.cpu().to(torch.float64))
-        original_xs.append(original_x.cpu().to(torch.float64))
 
-    original_xs = torch.cat(original_xs).numpy()
     preds = torch.cat(preds).numpy()
-    preds = Scaler(cfg).inv_scale_output(preds, original_xs)
+    preds = Scaler(cfg).inv_scale_output(preds)
     print(type(preds), preds.shape)
 
     # load sample
