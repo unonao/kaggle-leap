@@ -636,7 +636,7 @@ class LeapModel(nn.Module):
         x = x.transpose(-1, -2).unsqueeze(-1)
         x, class_logits = self.unet(x)
 
-        x = x.squeeze(1)  # (batch, 6, 60)
+        x = x.squeeze(1)  # (batch, 6, 60, 1)
         x = x.flatten(start_dim=1)
         x = torch.cat([x, class_logits], dim=1)
 
