@@ -4,7 +4,7 @@ modes: [train, valid, test, viz]
 
 
 dataset_dir: input/make_webdataset_batch/all
-scale_dir: misc/normalize_v6_feat
+scale_dir: misc/normalize_v7_feat
 norm_name: "1e+60"
 test_path: input/test.parquet
 sample_submission_path: input/sample_submission.parquet
@@ -54,14 +54,12 @@ scalar_feats: [
 
 # model
 model:
-  same_height_hidden_sizes: [120, 60] # 6個にpoolingするので 最終層の次元数は6の倍数にする
+  same_height_hidden_sizes: [128, 128]
   embedding_dim: 10
   categorical_embedding_dim: 5
-  last_pooling: avg # max, linear
   dropout: 0.2
   bilinear: False
-  n_base_channels: 48
-  n_feat_channels: 8
+  n_base_channels: 128
 
 
 
@@ -98,4 +96,4 @@ gradient_clip_val: 1.0
 accumulate_grad_batches: 4
 resume_ckpt_path: null
 val_check_interval: null # 学習データ量増やしたら設定しておくと良さそう
-
+val_check_warmup: 5000

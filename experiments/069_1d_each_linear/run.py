@@ -404,15 +404,34 @@ class DoubleConv(nn.Module):
     height and width size will be changed to size-4.
     """
 
-    def __init__(self, in_channels, out_channels, mid_channels=None):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        mid_channels=None,
+        kernel_size=(3, 1),
+        padding=(1, 0),
+    ):
         super().__init__()
         if not mid_channels:
             mid_channels = out_channels
         self.double_conv = nn.Sequential(
-            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(
+                in_channels,
+                mid_channels,
+                kernel_size=kernel_size,
+                padding=padding,
+                bias=False,
+            ),
             nn.BatchNorm2d(mid_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(
+                mid_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                padding=padding,
+                bias=False,
+            ),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
         )
@@ -427,7 +446,7 @@ class Down(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
-            nn.MaxPool2d(2), DoubleConv(in_channels, out_channels)
+            nn.MaxPool2d((2, 1)), DoubleConv(in_channels, out_channels)
         )
 
     def forward(self, x):
@@ -446,7 +465,7 @@ class Up(nn.Module):
             self.conv = DoubleConv(in_channels, out_channels, in_channels // 2)
         else:
             self.up = nn.ConvTranspose2d(
-                in_channels, in_channels // 2, kernel_size=2, stride=2
+                in_channels, in_channels // 2, kernel_size=(2, 1), stride=2
             )
             self.conv = DoubleConv(in_channels, out_channels)
 
@@ -533,58 +552,75 @@ class UNet(nn.Module):
         return logits, class_logits
 
 
+class Linear2d(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(Linear2d, self).__init__()
+        self.scaler_weights = nn.Parameter(torch.randn(60, in_channels, out_channels))
+        self.scaler_biases = nn.Parameter(torch.randn(60, out_channels))
+        nn.init.kaiming_uniform_(self.scaler_weights, a=0, nonlinearity="leaky_relu")
+        nn.init.kaiming_uniform_(self.scaler_biases, a=0, nonlinearity="leaky_relu")
+
+    def forward(self, x):
+        return torch.einsum("bhi,hio->bho", x, self.scaler_weights) + self.scaler_biases
+
+
+class MLP(nn.Module):
+    def __init__(self, in_size, hidden_sizes):
+        super(MLP, self).__init__()
+        layers = []
+        previous_size = in_size
+        for i, hidden_size in enumerate(hidden_sizes):
+            layers.append(Linear2d(previous_size, hidden_size))
+            if i != len(hidden_sizes) - 1:
+                layers.append(nn.LayerNorm(hidden_size))
+                layers.append(nn.LeakyReLU(inplace=True))
+            previous_size = hidden_size
+        self.mlp = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.mlp(x)
+
+
 class LeapModel(nn.Module):
     def __init__(
         self,
         same_height_hidden_sizes=[60, 60],
         embedding_dim=5,
         categorical_embedding_dim=5,
-        last_pooling="avg",
         bilinear=False,
         dropout=0.2,
         n_base_channels=32,
-        n_feat_channels=1,
         seq_feats=[],
         scalar_feats=[],
     ):
         super().__init__()
         self.seq_feats = seq_feats
         self.scalar_feats = scalar_feats
-        self.n_feat_channels = n_feat_channels
         num_embeddings = 60
         self.positional_embedding = nn.Embedding(num_embeddings, embedding_dim)
         self.constant_encoder = nn.Linear(1, 60)
         self.categorical_embedding = nn.Embedding(240, categorical_embedding_dim)
 
-        layers = []
         previous_size = 9 + 16 + embedding_dim
         previous_size += len(seq_feats)
         previous_size += len(scalar_feats)
         previous_size += 2 * categorical_embedding_dim
-
-        for hidden_size in same_height_hidden_sizes:
-            layers.append(nn.Linear(previous_size, hidden_size * n_feat_channels))
-            layers.append(nn.LayerNorm(hidden_size * n_feat_channels))
-            layers.append(nn.LeakyReLU(inplace=True))
-            previous_size = hidden_size * n_feat_channels
-        self.same_height_encoder = nn.Sequential(*layers)
+        self.same_height_encoder = MLP(previous_size, same_height_hidden_sizes)
 
         self.unet = UNet(
-            n_channels=n_feat_channels,
-            n_classes=1,
+            n_channels=same_height_hidden_sizes[-1],
+            n_classes=n_base_channels,
             n_class_head=8,
             bilinear=bilinear,
             dropout=dropout,
             n_base_channels=n_base_channels,
         )
 
-        self.pooling = None
-        if last_pooling == "avg":
-            self.pooling = nn.AdaptiveMaxPool1d(6)
-        elif last_pooling == "max":
-            self.pooling = nn.AdaptiveAvgPool1d(6)
-        elif last_pooling == "linear":
-            self.pooling = nn.Linear(same_height_hidden_sizes[-1], 6)
+        self.t_head = MLP(1 + n_base_channels, same_height_hidden_sizes + [1])
+        self.q_head = MLP(5 + n_base_channels, same_height_hidden_sizes + [3])
+        self.wind_head = nn.ModuleList(
+            [MLP(3 + n_base_channels, same_height_hidden_sizes + [1]) for _ in range(2)]
+        )
 
     def forward(self, x, x_cat):
         x_state_t = x[:, :60].unsqueeze(-1)
@@ -645,26 +681,31 @@ class LeapModel(nn.Module):
             dim=2,
         )
 
-        x = self.same_height_encoder(
-            x
-        )  # (batch, 60, dim) -> (batch, 60, same_height_hidden_sizes[-1]*n_feat_channels)
+        # (batch, 60, dim) -> (batch, 60, same_height_hidden_sizes[-1]*n_feat_channels)
+        x = self.same_height_encoder(x)
 
-        x = x.reshape((x.shape[0], 60, self.n_feat_channels, -1)).transpose(1, 2)
-
+        x = x.transpose(-1, -2).unsqueeze(-1)
         x, class_logits = self.unet(x)
 
-        x = x.squeeze(
-            1
-        )  # (batch, 1, 60, same_height_hidden_sizes[-1]) -> (batch, 60, same_height_hidden_sizes[-1])
-        x = self.pooling(
-            x
-        )  # (batch, 60, same_height_hidden_sizes[-1]) -> (batch, 60, 6)
+        x = x.squeeze(-1)  # ->(batch, n_base_channels, 60)
+        x = x.transpose(-1, -2)  # ->(batch, 60, n_base_channels)
 
-        x = x.transpose(-1, -2)  # ([batch, 6, 60, 1] - > [batch, 1, 6, 60])
-        x = x.flatten(start_dim=1)
-        x = torch.cat([x, class_logits], dim=1)
+        out_t = self.t_head(torch.cat([x_state_t, x], dim=2))  # -> (batch, 60, 1)
+        out_q = self.q_head(
+            torch.cat(
+                [x_state_t, out_t, x_state_q0001, x_state_q0002, x_state_q0003, x],
+                dim=2,
+            )
+        )
+        out_u = self.wind_head[0](torch.cat([x_state_t, out_t, x_state_u, x], dim=2))
+        out_v = self.wind_head[1](torch.cat([x_state_t, out_t, x_state_v, x], dim=2))
 
-        return x
+        out = torch.cat([out_t, out_q, out_u, out_v], dim=2)
+        out = out.transpose(-1, -2)
+        out = out.flatten(start_dim=1)
+        out = torch.cat([out, class_logits], dim=1)
+
+        return out
 
 
 class LeapLightningModule(LightningModule):

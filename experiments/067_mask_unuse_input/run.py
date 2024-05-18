@@ -719,6 +719,10 @@ class LeapLightningModule(LightningModule):
             y.to(self.torch_dtype),
         )
         x_cat = x_cat.to(torch.long)
+
+        # 出力で使わない列に対応する列を0にする
+        x[:, self.unuse_cols_index] = 0.0
+
         out = self.__pred(x, x_cat, mode)
         out_masked = out[mask]
         y_masked = y[mask]
@@ -757,6 +761,10 @@ class LeapLightningModule(LightningModule):
             x.to(self.torch_dtype),
             y.to(self.torch_dtype),
         )
+
+        # 出力で使わない列に対応する列を0にする
+        x[:, self.unuse_cols_index] = 0.0
+
         x_cat = x_cat.to(torch.long)
         out = self.__pred(x, x_cat, mode)
         out_masked = out[mask]
@@ -781,6 +789,10 @@ class LeapLightningModule(LightningModule):
         x, x_cat = batch
         x = x.to(self.torch_dtype)
         x_cat = x_cat.to(torch.long)
+
+        # 出力で使わない列に対応する列を0にする
+        x[:, self.unuse_cols_index] = 0.0
+
         out = self.__pred(x, x_cat, mode)
         return out
 

@@ -1,0 +1,10 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+
+train_data_skip_mod: 1
+val_check_interval: 20000
+
+ema:
+  use_ema: True
+  decay: 0.9999
