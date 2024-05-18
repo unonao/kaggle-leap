@@ -61,6 +61,7 @@ def cal_pressures(df):
 
 def process_features(x_array, pressures_array):
     # len=60
+    cloud_water_array = x_array[:, 120:180] + x_array[:, 180:240]
     water_array = x_array[:, 60:120] + x_array[:, 120:180] + x_array[:, 180:240]
     water_energy_array = water_array * pressures_array * lv / grav
     temp_energy_array = x_array[:, 0:60] * pressures_array * cp / grav
@@ -86,6 +87,7 @@ def process_features(x_array, pressures_array):
 
     result_dict = {
         "base": x_array[:, :556],
+        "cloud_water": cloud_water_array,
         "pressures": pressures_array,
         "water": water_array,
         "water_energy": water_energy_array,
