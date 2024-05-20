@@ -243,7 +243,7 @@ class Scaler:
                 y[:, i] = self.y_mean[i]
         y = y.astype(np.float64)
         # cloud water の差分を予測したので、線形補間で元の値に戻す
-        ptend_cloud_water = y[:, 120:180] * 1200
+        ptend_cloud_water = y[:, 180:240] * 1200
         state_cloud_water = original_x[:, 120:180] + original_x[:, 180:240]
         new_cloud_water = np.clip(
             state_cloud_water + ptend_cloud_water, 0, None

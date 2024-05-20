@@ -4,12 +4,12 @@ modes: [train, valid, test, viz]
 
 
 dataset_dir: input/make_webdataset_batch/all
-scale_dir: misc/normalize_v8_feat
+scale_dir: misc/normalize_v7_feat
 norm_name: "1e+60"
 test_path: input/test.parquet
 sample_submission_path: input/sample_submission.parquet
 viz_notebook_path: notebook/result_viz_002_for_v5.ipynb
-tmelt_tice_dir: output/preprocess/tmelt_tice_001/001
+tmelt_tice_dir: output/preprocess/tmelt_tice/001
 pred_checkpoint_path: null
 
 
@@ -62,7 +62,8 @@ scalar_feats: [
 
 # model
 model:
-  same_height_hidden_sizes: [128, 128]
+  mlp_hidden_size: 128
+  mlp_n_layers: 3
   embedding_dim: 10
   categorical_embedding_dim: 5
   dropout: 0.2

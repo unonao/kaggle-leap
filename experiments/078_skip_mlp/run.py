@@ -239,28 +239,13 @@ class Scaler:
         for i in range(self.y_rms_sub.shape[0]):
             if self.y_rms_sub[i] < self.eps * 1.1:
                 y[:, i] = self.y_mean[i]
-        y = y.astype(np.float64)
-        # cloud water の差分を予測したので、線形補間で元の値に戻す
-        ptend_cloud_water = y[:, 120:180]
-        state_cloud_water = original_x[:, 120:180] + original_x[:, 180:240]
-        new_cloud_water = np.clip(
-            state_cloud_water + ptend_cloud_water, 0, None
-        )  # ０未満になることはない
-        snow_rate = np.nan_to_num(
-            np.clip(
-                (self.tmelt_array - original_x[:, :60])
-                / (self.tmelt_array - self.tice_array),
-                0,
-                1,
-            ),
-            0.0,
-        )
-        # 新しい値からの変化量を求める
-        y[:, 180:240] = (new_cloud_water * snow_rate - original_x[:, 180:240]) / 1200.0
-        y[:, 120:180] = (
-            new_cloud_water * (1 - snow_rate) - original_x[:, 120:180]
-        ) / 1200.0
 
+        if post_process:
+            y = self.post_process(y, original_x)
+
+        return y
+
+    def post_process(self, y, original_x):
         # tmelt以上の値を置き換える
         tmelt_cond = original_x[:, :60] > self.tmelt_array
         y[:, 180:240] = np.where(
@@ -272,12 +257,6 @@ class Scaler:
             tmelt_cond, original_x[:, 120:180] / (-1200), y[:, 120:180]
         )
 
-        if post_process:
-            y = self.post_process(y, original_x)
-
-        return y
-
-    def post_process(self, y, original_x):
         # fill target はすべて置き換える
         y[:, self.fill_target_index] = original_x[:, self.fill_target_index] * (
             -1 / 1200
@@ -285,10 +264,6 @@ class Scaler:
         return y
 
     def filter_and_scale(self, x, y):
-        new_q2 = x[:, 120:180] + y[:, 120:180] * 1200.0
-        new_q3 = x[:, 180:240] + y[:, 180:240] * 1200.0
-        snow_rate = new_q3 / (new_q2 + new_q3 + self.eps)
-
         # y が lower_bound と upper_bound の間に収まらなければその行をスキップ
         filter_bool = np.all(y >= self.y_lower_bound - self.eps, axis=1) & np.all(
             y <= self.y_upper_bound + self.eps, axis=1
@@ -298,11 +273,8 @@ class Scaler:
             x, x_cat = self.scale_input_1d(x)
         else:
             x, x_cat = self.scale_input(x)
-
-        y[:, 120:180] += y[:, 180:240]
-        y[:, 180:240] = y[:, 120:180]
         y = self.scale_output(y)
-        return x, x_cat, y, snow_rate, filter_bool
+        return x, x_cat, y, filter_bool
 
 
 class LeapLightningDataModule(LightningDataModule):
@@ -468,9 +440,7 @@ class LeapLightningDataModule(LightningDataModule):
             for sample in source:
                 original_x, original_y = sample
                 original_x = np.delete(original_x, 375, 1)
-                x, x_cat, y, snow_rate, mask = self.scaler.filter_and_scale(
-                    original_x, original_y
-                )
+                x, x_cat, y, mask = self.scaler.filter_and_scale(original_x, original_y)
                 x, x_cat, y, mask, original_x, original_y = (
                     torch.tensor(x),
                     torch.tensor(x_cat),
@@ -638,27 +608,45 @@ class UNet(nn.Module):
         return logits, class_logits
 
 
-class MLP(nn.Module):
-    def __init__(self, in_size, hidden_sizes):
-        super(MLP, self).__init__()
+class SkipMLP(nn.Module):
+    def __init__(self, in_size, out_size, hidden_size, n_layers=2):
+        super(SkipMLP, self).__init__()
+
+        self.mlp_first = nn.Sequential(
+            nn.Linear(in_size, hidden_size),
+            nn.LayerNorm(hidden_size),
+            nn.LeakyReLU(inplace=True),
+        )
+
+        mid_size = in_size + hidden_size
         layers = []
-        previous_size = in_size
-        for i, hidden_size in enumerate(hidden_sizes):
-            layers.append(nn.Linear(previous_size, hidden_size))
-            if i != len(hidden_sizes) - 1:
-                layers.append(nn.LayerNorm(hidden_size))
-                layers.append(nn.LeakyReLU(inplace=True))
-            previous_size = hidden_size
-        self.mlp = nn.Sequential(*layers)
+        for i in range(n_layers - 2):
+            layers.append(
+                nn.Sequential(
+                    nn.Linear(mid_size, mid_size),
+                    nn.LayerNorm(mid_size),
+                    nn.LeakyReLU(inplace=True),
+                )
+            )
+        self.linears = nn.ModuleList(layers)
+
+        self.mlp_last = nn.Linear(mid_size, out_size)
 
     def forward(self, x):
-        return self.mlp(x)
+        x1 = self.mlp_first(x)
+        x = torch.cat([x, x1], dim=2)
+        for i, layer in enumerate(self.linears):
+            x_mid = layer(x)
+            x += x_mid
+        x = self.mlp_last(x)
+        return x
 
 
 class LeapModel(nn.Module):
     def __init__(
         self,
-        same_height_hidden_sizes=[60, 60],
+        mlp_hidden_size=128,
+        mlp_n_layers=3,
         embedding_dim=5,
         categorical_embedding_dim=5,
         bilinear=False,
@@ -679,10 +667,15 @@ class LeapModel(nn.Module):
         previous_size += len(seq_feats)
         previous_size += len(scalar_feats)
         previous_size += 2 * categorical_embedding_dim
-        self.same_height_encoder = MLP(previous_size, same_height_hidden_sizes)
+        self.same_height_encoder = SkipMLP(
+            in_size=previous_size,
+            out_size=mlp_hidden_size,
+            hidden_size=mlp_hidden_size,
+            n_layers=mlp_n_layers,
+        )
 
         self.unet = UNet(
-            n_channels=same_height_hidden_sizes[-1],
+            n_channels=mlp_hidden_size,
             n_classes=n_base_channels,
             n_class_head=8,
             bilinear=bilinear,
@@ -690,11 +683,19 @@ class LeapModel(nn.Module):
             n_base_channels=n_base_channels,
         )
 
-        self.t_head = MLP(8 + n_base_channels, same_height_hidden_sizes + [1])
-        self.q1_head = MLP(9 + n_base_channels, same_height_hidden_sizes + [1])
-        self.q23_head = MLP(9 + n_base_channels, same_height_hidden_sizes + [1])
+        self.t_head = SkipMLP(
+            in_size=8 + n_base_channels, out_size=1, hidden_size=mlp_hidden_size
+        )
+        self.q_head = SkipMLP(
+            in_size=9 + n_base_channels, out_size=3, hidden_size=mlp_hidden_size
+        )
         self.wind_head = nn.ModuleList(
-            [MLP(8 + n_base_channels, same_height_hidden_sizes + [1]) for _ in range(2)]
+            [
+                SkipMLP(
+                    in_size=8 + n_base_channels, out_size=1, hidden_size=mlp_hidden_size
+                )
+                for _ in range(2)
+            ]
         )
 
     def forward(self, x, x_cat):
@@ -758,7 +759,7 @@ class LeapModel(nn.Module):
             dim=2,
         )
 
-        # (batch, 60, dim) -> (batch, 60, same_height_hidden_sizes[-1]*n_feat_channels)
+        # (batch, 60, dim) -> (batch, 60, mlp_hidden_size)
         x = self.same_height_encoder(x)
 
         x = x.transpose(-1, -2).unsqueeze(-1)
@@ -783,24 +784,7 @@ class LeapModel(nn.Module):
                 dim=2,
             )
         )  # -> (batch, 60, 1)
-        out_q1 = self.q1_head(
-            torch.cat(
-                [
-                    x_state_t,
-                    out_t,
-                    x_state_q0001,
-                    x_state_q0002,
-                    x_state_q0003,
-                    x_cloud_water,
-                    x_cloud_snow_rate_array,
-                    x_state_u,
-                    x_state_v,
-                    x,
-                ],
-                dim=2,
-            )
-        )
-        out_q23 = self.q23_head(
+        out_q = self.q_head(
             torch.cat(
                 [
                     x_state_t,
@@ -850,7 +834,7 @@ class LeapModel(nn.Module):
             )
         )
 
-        out = torch.cat([out_t, out_q1, out_q23, out_q23, out_u, out_v], dim=2)
+        out = torch.cat([out_t, out_q, out_u, out_v], dim=2)
         out = out.transpose(-1, -2)
         out = out.flatten(start_dim=1)
         out = torch.cat([out, class_logits], dim=1)
@@ -1218,11 +1202,6 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
         col: r2 for col, r2 in dict(zip(cfg.cols.col_names, r2_scores)).items()
     }
     pickle.dump(r2_score_dict, open(output_path / "r2_score_dict.pkl", "wb"))
-
-    r2_score_dict = {
-        col: r2 if col not in cfg.exp.fill_target else 1.0
-        for col, r2 in r2_score_dict.items()
-    }
     pickle.dump(r2_score_dict, open(output_path / "r2_score_dict_fill.pkl", "wb"))
 
     r2_score = float(np.array([v for v in r2_score_dict.values()]).mean())
