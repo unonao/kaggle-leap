@@ -1,3 +1,4 @@
 # メモ
 
-python experiments/076_tmelt_tice_pp/run.py exp=003_all
+python experiments/079_log_water/run.py exp=001_all
+python experiments/079_log_water/run.py exp=002_all
