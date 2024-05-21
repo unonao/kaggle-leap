@@ -21,11 +21,6 @@ import polars as pl
 import xarray as xr
 from tqdm import tqdm
 
-debug = False
-n_sampling = 9000 if debug else int(625000 * 0.8)
-iter_sampling = 10 if debug else 100
-
-
 # physical constatns from (E3SM_ROOT/share/util/shr_const_mod.F90)
 grav = 9.80616  # acceleration of gravity ~ m/s^2
 cp = 1.00464e3  # specific heat of dry air   ~ J/kg/K
@@ -36,7 +31,7 @@ rho_air = 101325.0 / (6.02214e26 * 1.38065e-23 / 28.966) / 273.15
 rho_h20 = 1.0e3  # density of fresh water     ~ kg/m^ 3
 
 
-def cal_y_min_max(df):
+def cal_y_min_max(df, iter_sampling, n_sampling):
     print("cal_y_min_max")
     y_sample_min_list = []
     y_sample_max_list = []
@@ -199,10 +194,13 @@ def main(cfg: DictConfig) -> None:
     print(f"ouput_path: {output_path}")
     os.makedirs(output_path, exist_ok=True)
 
-    df = pl.read_parquet("input/train.parquet", n_rows=cfg.exp.num_rows)
+    iter_sampling = 10 if cfg.debug else 100
+    n_sampling = 9000 if cfg.debug else int(625000 * 0.8)
+
+    df = pl.read_parquet("input/train.parquet", n_rows=50000 if cfg.debug else None)
     print(df.shape)
 
-    y_sample_min_max, y_sample_max_min = cal_y_min_max(df)
+    y_sample_min_max, y_sample_max_min = cal_y_min_max(df, iter_sampling, n_sampling)
     np.save(output_path / "y_sample_min_max.npy", y_sample_min_max)
     np.save(output_path / "y_sample_max_min.npy", y_sample_max_min)
 
