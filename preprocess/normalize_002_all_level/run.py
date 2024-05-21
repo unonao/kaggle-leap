@@ -118,12 +118,18 @@ def cal_stats_x_y(df, features_dict, output_path):
         mean_feat_dict[key] = x_mean
         std_feat_dict[key] = x_std
 
+    mean_feat_dict["t_all"] = np.nanmean(features_dict["base"][:, 0:60])
     mean_feat_dict["q1_all"] = np.nanmean(features_dict["base"][:, 60:120])
     mean_feat_dict["q2_all"] = np.nanmean(features_dict["base"][:, 120:180])
     mean_feat_dict["q3_all"] = np.nanmean(features_dict["base"][:, 180:240])
+    mean_feat_dict["u_all"] = np.nanmean(features_dict["base"][:, 240:300])
+    mean_feat_dict["v_all"] = np.nanmean(features_dict["base"][:, 300:360])
+    std_feat_dict["t_all"] = np.nanstd(features_dict["base"][:, 0:60])
     std_feat_dict["q1_all"] = np.nanstd(features_dict["base"][:, 60:120])
     std_feat_dict["q2_all"] = np.nanstd(features_dict["base"][:, 120:180])
     std_feat_dict["q3_all"] = np.nanstd(features_dict["base"][:, 180:240])
+    std_feat_dict["u_all"] = np.nanstd(features_dict["base"][:, 240:300])
+    std_feat_dict["v_all"] = np.nanstd(features_dict["base"][:, 300:360])
     mean_feat_dict["q1_log_all"] = np.nanmean(features_dict["q1_log"])
     mean_feat_dict["q2_log_all"] = np.nanmean(features_dict["q2_log"])
     mean_feat_dict["q3_log_all"] = np.nanmean(features_dict["q3_log"])
