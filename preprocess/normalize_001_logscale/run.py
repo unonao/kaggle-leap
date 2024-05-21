@@ -1,25 +1,15 @@
 import os
+import pickle
 import sys
 from pathlib import Path
 
 import hydra
 import numpy as np
 import polars as pl
-from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, OmegaConf
-from tqdm.auto import tqdm
-
-"""
-y のoutlier を除外してから各統計量を計算する
-"""
-
-import pickle
-from pathlib import Path
-
-import numpy as np
-import polars as pl
 import xarray as xr
-from tqdm import tqdm
+from hydra.core.hydra_config import HydraConfig
+from omegaconf import DictConfig
+from tqdm.auto import tqdm
 
 # physical constatns from (E3SM_ROOT/share/util/shr_const_mod.F90)
 grav = 9.80616  # acceleration of gravity ~ m/s^2
