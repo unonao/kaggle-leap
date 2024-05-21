@@ -9,7 +9,6 @@ import polars as pl
 import xarray as xr
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
-from tqdm.auto import tqdm
 
 # physical constatns from (E3SM_ROOT/share/util/shr_const_mod.F90)
 grav = 9.80616  # acceleration of gravity ~ m/s^2
@@ -19,22 +18,6 @@ lf = 3.337e5  # latent heat of fusion      ~ J/kg
 ls = lv + lf  # latent heat of sublimation ~ J/kg
 rho_air = 101325.0 / (6.02214e26 * 1.38065e-23 / 28.966) / 273.15
 rho_h20 = 1.0e3  # density of fresh water     ~ kg/m^ 3
-
-
-def cal_y_min_max(df, iter_sampling, n_sampling):
-    print("cal_y_min_max")
-    y_sample_min_list = []
-    y_sample_max_list = []
-    for i in tqdm(range(iter_sampling)):
-        sample_df = df[:, 557:].sample(n_sampling, seed=i)
-        y_sample_min = sample_df.min().to_numpy().ravel()
-        y_sample_min_list.append(y_sample_min)
-        y_sample_max = sample_df.max().to_numpy().ravel()
-        y_sample_max_list.append(y_sample_max)
-
-    y_sample_min_max = np.max(y_sample_min_list, axis=0)
-    y_sample_max_min = np.min(y_sample_max_list, axis=0)
-    return y_sample_min_max, y_sample_max_min
 
 
 def cal_pressures(df):
@@ -67,6 +50,12 @@ def process_features(x_array, pressures_array):
     wind_vec_array = np.sqrt(wind_energy_array)
 
     # scalar
+    q1_sum = x_array[:, 60:120].sum(axis=1)
+    q1_sum_log = np.log1p(q1_sum * 1e9)
+    q2_sum = x_array[:, 120:180].sum(axis=1)
+    q2_sum_log = np.log1p(q2_sum * 1e9)
+    q3_sum = x_array[:, 180:240].sum(axis=1)
+    q3_sum_log = np.log1p(q3_sum * 1e9)
     sum_energy_array = x_array[:, [361, 362, 363, 371]].sum(axis=1)
     sum_flux_array = x_array[:, [362, 363, 371]].sum(axis=1)
     energy_diff_array = x_array[:, 361] - sum_flux_array
@@ -96,6 +85,12 @@ def process_features(x_array, pressures_array):
         "v_energy": v_energy_array,
         "wind_energy": wind_energy_array,
         "wind_vec": wind_vec_array,
+        "q1_sum": q1_sum,
+        "q1_sum_log": q1_sum_log,
+        "q2_sum": q2_sum,
+        "q2_sum_log": q2_sum_log,
+        "q3_sum": q3_sum,
+        "q3_sum_log": q3_sum_log,
         "sum_energy": sum_energy_array,
         "sum_flux": sum_flux_array,
         "energy_diff": energy_diff_array,
@@ -109,69 +104,57 @@ def process_features(x_array, pressures_array):
     return result_dict
 
 
-def cal_stats_x_y(
-    df, y_sample_min_max, y_sample_max_min, diff_rate, features_dict, output_path
-):
-    print(f"cal_stats_x_y: {diff_rate=}")
-
-    y_diff = (y_sample_max_min - y_sample_min_max) * diff_rate
-    y_lower_bound = y_sample_min_max - y_diff
-    np.save(output_path / f"y_lower_bound_{diff_rate}.npy", y_lower_bound)
-
-    y_upper_bound = y_sample_max_min + y_diff
-    np.save(output_path / f"y_upper_bound_{diff_rate}.npy", y_upper_bound)
-
-    y = df[:, 557:].to_numpy()
-    y[y < y_lower_bound] = np.nan
-    y[y > y_upper_bound] = np.nan
-    y_nanmean = np.nanmean(y, axis=0)
-    np.save(output_path / f"y_nanmean_{diff_rate}.npy", y_nanmean)
-    y_nanmin = np.nanmin(y, axis=0)
-    np.save(output_path / f"y_nanmin_{diff_rate}.npy", y_nanmin)
-    y_nanmax = np.nanmax(y, axis=0)
-    np.save(output_path / f"y_nanmax_{diff_rate}.npy", y_nanmax)
-    y_nanstd = np.nanstd(y, axis=0)
-    np.save(output_path / f"y_nanstd_{diff_rate}.npy", y_nanstd)
-
-    y_rms_np = np.sqrt(np.nanmean(y * y, axis=0)).ravel()
-    np.save(output_path / f"y_rms_{diff_rate}.npy", y_rms_np)
-
-    y_sub = y - y_nanmean
-    y_rms_sub_np = np.sqrt(np.nanmean(y_sub * y_sub, axis=0)).ravel()
-    np.save(output_path / f"y_rms_sub_{diff_rate}.npy", y_rms_sub_np)
-    print(
-        f"{y_nanmean.shape=}, {y_nanmin.shape=}, {y_nanmax.shape=}, {y_nanstd.shape=}, {y_rms_np.shape=}, {y_rms_sub_np.shape=}"
-    )
-
+def cal_stats_x_y(df, features_dict, output_path):
     print("start x")
     ### x
-    # y で outlier とならない範囲のデータを抽出
-    eps = 1e-60
-    filter_bool = np.all(
-        df[:, 557:].to_numpy() >= y_lower_bound - eps, axis=1
-    ) & np.all(df[:, 557:].to_numpy() <= y_upper_bound + eps, axis=1)
     print(f"{df.shape=}")
-    filter_df = df.filter(filter_bool)
-    print(f"{df.shape=}, {filter_df.shape=}")
-
     mean_feat_dict = {}
     std_feat_dict = {}
-    for key, values in features_dict.items():
-        array = values[filter_bool]
+    for key, array in features_dict.items():
         x_mean = np.nanmean(array, axis=0)
         x_std = np.nanstd(array, axis=0)
-        if "base" == key:
-            x_mean[120:240] = np.ma.masked_equal(array[:, 120:240], 0).mean(axis=0)
-            x_std[120:240] = np.ma.masked_equal(array[:, 120:240], 0).std(axis=0)
         if np.isnan(x_mean).any():
             print(f"{key=}, {x_mean=}")
         mean_feat_dict[key] = x_mean
         std_feat_dict[key] = x_std
 
-    with open(output_path / f"x_mean_feat_dict_{diff_rate}.pkl", "wb") as f:
+    mean_feat_dict["q1_all"] = np.nanmean(features_dict["base"][:, 60:120])
+    mean_feat_dict["q2_all"] = np.nanmean(features_dict["base"][:, 120:180])
+    mean_feat_dict["q3_all"] = np.nanmean(features_dict["base"][:, 180:240])
+    std_feat_dict["q1_all"] = np.nanstd(features_dict["base"][:, 60:120])
+    std_feat_dict["q2_all"] = np.nanstd(features_dict["base"][:, 120:180])
+    std_feat_dict["q3_all"] = np.nanstd(features_dict["base"][:, 180:240])
+    mean_feat_dict["q1_log_all"] = np.nanmean(features_dict["q1_log"])
+    mean_feat_dict["q2_log_all"] = np.nanmean(features_dict["q2_log"])
+    mean_feat_dict["q3_log_all"] = np.nanmean(features_dict["q3_log"])
+    std_feat_dict["q1_log_all"] = np.nanstd(features_dict["q1_log"])
+    std_feat_dict["q2_log_all"] = np.nanstd(features_dict["q2_log"])
+    std_feat_dict["q3_log_all"] = np.nanstd(features_dict["q3_log"])
+
+    with open(output_path / "x_mean_feat_dict.pkl", "wb") as f:
         pickle.dump(mean_feat_dict, f)
-    with open(output_path / f"x_std_feat_dict_{diff_rate}.pkl", "wb") as f:
+    with open(output_path / "x_std_feat_dict.pkl", "wb") as f:
         pickle.dump(std_feat_dict, f)
+
+    print("cal_stats_x_y")
+    y = df[:, 557:].to_numpy()
+    y_nanmean = np.nanmean(y, axis=0)
+    np.save(output_path / "y_nanmean.npy", y_nanmean)
+    y_nanmin = np.nanmin(y, axis=0)
+    np.save(output_path / "y_nanmin.npy", y_nanmin)
+    y_nanmax = np.nanmax(y, axis=0)
+    np.save(output_path / "y_nanmax.npy", y_nanmax)
+    y_nanstd = np.nanstd(y, axis=0)
+    np.save(output_path / "y_nanstd.npy", y_nanstd)
+    y_rms_np = np.sqrt(np.nanmean(y * y, axis=0)).ravel()
+    np.save(output_path / "y_rms.npy", y_rms_np)
+
+    y_sub = y - y_nanmean
+    y_rms_sub_np = np.sqrt(np.nanmean(y_sub * y_sub, axis=0)).ravel()
+    np.save(output_path / "y_rms_sub.npy", y_rms_sub_np)
+    print(
+        f"{y_nanmean.shape=}, {y_nanmin.shape=}, {y_nanmax.shape=}, {y_nanstd.shape=}, {y_rms_np.shape=}, {y_rms_sub_np.shape=}"
+    )
 
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
@@ -184,28 +167,17 @@ def main(cfg: DictConfig) -> None:
     print(f"ouput_path: {output_path}")
     os.makedirs(output_path, exist_ok=True)
 
-    iter_sampling = 10 if cfg.debug else 100
-    n_sampling = 9000 if cfg.debug else int(625000 * 0.8)
-
     df = pl.read_parquet("input/train.parquet", n_rows=50000 if cfg.debug else None)
     print(df.shape)
-
-    y_sample_min_max, y_sample_max_min = cal_y_min_max(df, iter_sampling, n_sampling)
-    np.save(output_path / "y_sample_min_max.npy", y_sample_min_max)
-    np.save(output_path / "y_sample_max_min.npy", y_sample_max_min)
 
     pressures = cal_pressures(df)
     features_dict = process_features(df[:, 1:557].to_numpy(), pressures)
 
-    for diff_rate in [1e60]:
-        cal_stats_x_y(
-            df,
-            y_sample_min_max,
-            y_sample_max_min,
-            diff_rate,
-            features_dict,
-            output_path,
-        )
+    cal_stats_x_y(
+        df,
+        features_dict,
+        output_path,
+    )
 
 
 if __name__ == "__main__":
