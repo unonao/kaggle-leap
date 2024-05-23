@@ -687,7 +687,6 @@ class LeapModel(nn.Module):
     def __init__(
         self,
         same_height_hidden_sizes=[60, 60],
-        use_input_layer_norm=False,
         use_output_layer_norm=True,
         use_batch_norm=True,
         embedding_dim=5,
@@ -710,12 +709,9 @@ class LeapModel(nn.Module):
         previous_size += len(seq_feats)
         previous_size += len(scalar_feats)
         previous_size += 2 * categorical_embedding_dim
-        self.same_height_encoder = MLP(
-            previous_size, same_height_hidden_sizes, use_layer_norm=use_input_layer_norm
-        )
 
         self.unet = UNet(
-            n_channels=same_height_hidden_sizes[-1],
+            n_channels=previous_size,
             n_classes=n_base_channels,
             n_class_head=8,
             bilinear=bilinear,
@@ -805,9 +801,6 @@ class LeapModel(nn.Module):
             input_list,
             dim=2,
         )
-
-        # (batch, 60, dim) -> (batch, 60, same_height_hidden_sizes[-1]*n_feat_channels)
-        x = self.same_height_encoder(x)
 
         x = x.transpose(-1, -2).unsqueeze(-1)
         x, class_logits = self.unet(x)

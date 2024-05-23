@@ -62,7 +62,6 @@ scalar_feats: [
 # model
 model:
   same_height_hidden_sizes: [128, 128]
-  use_input_layer_norm: False
   use_output_layer_norm: True
   use_batch_norm: True
   embedding_dim: 10
