@@ -1,0 +1,18 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+# model
+model:
+  use_batch_norm: True
+  
+train_data_skip_mod: 1
+val_check_interval: 5000
+max_epochs: 4
+
+accumulate_grad_batches: 1
+train_batch_size: 4
+valid_batch_size: 4
+
+ema:
+  use_ema: True
+  decay: 0.995

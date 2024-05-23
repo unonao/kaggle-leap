@@ -1,4 +1,4 @@
 # メモ
 
-python experiments/084_q_log_same_scale/run.py exp=base
-python experiments/085_dropout/run.py exp=002_all
+python experiments/088_exp_diff_dq/run.py exp=001_all
+python experiments/088_exp_diff_dq/run.py exp=002_all
