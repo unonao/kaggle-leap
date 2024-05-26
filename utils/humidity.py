@@ -184,7 +184,7 @@ class ThermLibNumpy:
         return (G / kappa) * (h_plume - h_satenv) / (C_P * T)
 
 
-def eliq(T, method="paper"):
+def eliq(T, method="Bolton"):
     """
     Function taking temperature (in K) and outputting liquid saturation
     pressure (in hPa) using a polynomial fit
@@ -207,6 +207,45 @@ def eliq(T, method="paper"):
         T0 = 273.16
         return 100 * np.polyval(a_liq, np.maximum(c_liq, T - T0))
 
+    elif method == "MurphyKoop":
+        es = np.exp(
+            54.842763
+            - (6763.22 / T)
+            - (4.210 * np.log(T))
+            + (0.000367 * T)
+            + (
+                np.tanh(0.0415 * (T - 218.8))
+                * (53.878 - (1331.22 / T) - (9.44523 * np.log(T)) + 0.014025 * T)
+            )
+        )
+        return es
+    elif method == "GoffGratch":
+        tboil = 373.15  # Boiling point of water in Kelvin
+        es = (
+            10.0
+            ** (
+                -7.90298 * (tboil / T - 1.0)
+                + 5.02808 * np.log10(tboil / T)
+                - 1.3816e-7 * (10.0 ** (11.344 * (1.0 - T / tboil)) - 1.0)
+                + 8.1328e-3 * (10.0 ** (-3.49149 * (tboil / T - 1.0)) - 1.0)
+                + np.log10(1013.246)
+            )
+            * 100.0
+        )
+        return es
+    elif method == "OldGoffGratch":
+        tboil = 373.15  # Boiling point of water in Kelvin
+        ps = 1013.246
+        e1 = 11.344 * (1.0 - T / tboil)
+        e2 = -3.49149 * (tboil / T - 1.0)
+        f1 = -7.90298 * (tboil / T - 1.0)
+        f2 = 5.02808 * np.log10(tboil / T)
+        f3 = -1.3816 * (10.0**e1 - 1.0) / 10000000.0
+        f4 = 8.1328 * (10.0**e2 - 1.0) / 1000.0
+        f5 = np.log10(ps)
+        f = f1 + f2 + f3 + f4 + f5
+        es = (10.0**f) * 100.0
+        return es
     elif method == "e3sm":
         a0 = 6.105851
         a1 = 0.4440316
@@ -236,6 +275,13 @@ def eliq(T, method="paper"):
             * np.exp(9.550426 - 5723.265 / T + 3.53068 * np.log(T) - 0.00728332 * T)
         )[index]
         return esatw * (10**2)
+    elif method == "Bolton":
+        c1 = 611.2
+        c2 = 17.67
+        c3 = 243.5
+        tmelt = 273.15  # Melting point of water in Kelvin
+        es = c1 * np.exp((c2 * (T - tmelt)) / ((T - tmelt) + c3))
+        return es
     elif method == "tenten":
         # https://metview.readthedocs.io/en/latest/api/functions/saturation_vapour_pressure.html
         a1 = 611.21
@@ -244,7 +290,7 @@ def eliq(T, method="paper"):
         return a1 * np.exp(a3 * (T - 273.16) / (T - a4))
 
 
-def eice(T, method="paper"):
+def eice(T, method="Bolton"):
     """
     Function taking temperature (in K) and outputting ice saturation
     pressure (in hPa) using a polynomial fit
@@ -266,7 +312,7 @@ def eice(T, method="paper"):
         c_ice = np.array([273.15, 185, -100, 0.00763685, 0.000151069, 7.48215e-07])
         T0 = 273.16
         return (
-            (T > c_ice[0]) * eliq(T)
+            (T > c_ice[0]) * eliq(T, method)
             + (T <= c_ice[0]) * (T > c_ice[1]) * 100 * np.polyval(a_ice, T - T0)
             + (T <= c_ice[1])
             * 100
@@ -276,6 +322,31 @@ def eice(T, method="paper"):
                 * (c_ice[4] + np.maximum(c_ice[2], T - T0) * c_ice[5])
             )
         )
+    elif method == "GoffGratch":
+        h2otrip = 273.16  # H2O triple point temperature in Kelvin
+        es = (
+            10.0
+            ** (
+                -9.09718 * (h2otrip / T - 1.0)
+                - 3.56654 * np.log10(h2otrip / T)
+                + 0.876793 * (1.0 - T / h2otrip)
+                + np.log10(6.1071)
+            )
+            * 100.0
+        )
+        return es
+    elif method == "OldGoffGratch":
+        tmelt = 273.15  # Melting point of ice in Kelvin
+        term1 = 2.01889049 / (tmelt / T)
+        term2 = 3.56654 * np.log(tmelt / T)
+        term3 = 20.947031 * (tmelt / T)
+        es = 575.185606e10 * np.exp(-(term1 + term2 + term3))
+        return es
+    elif method == "MurphyKoop":
+        es = np.exp(
+            9.550426 - (5723.265 / T) + (3.53068 * np.log(T)) - (0.00728332 * T)
+        )
+        return es
     elif method == "e3sm":
         a0 = 6.11147274
         a1 = 0.503160820
@@ -304,7 +375,13 @@ def eice(T, method="paper"):
             * np.exp(9.550426 - 5723.265 / T + 3.53068 * np.log(T) - 0.00728332 * T)
         )[index]
         return esati * (10**2)
-
+    elif method == "Bolton":
+        c1 = 611.2
+        c2 = 17.67
+        c3 = 243.5
+        tmelt = 273.15  # Melting point of water in Kelvin
+        es = c1 * np.exp((c2 * (T - tmelt)) / ((T - tmelt) + c3))
+        return es
     elif method == "tenten":
         # https://metview.readthedocs.io/en/latest/api/functions/saturation_vapour_pressure.html
         a1 = 611.21
@@ -318,7 +395,7 @@ def cal_specific2relative_coef(
     near_surface_air_pressure,
     hyam,
     hybm,
-    method="paper",
+    method="Bolton",
 ):
     """
     specific humidity を relative humidity に変換するための係数を算出する（逆数を取れば逆変換にも使える）
