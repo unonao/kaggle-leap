@@ -1,10 +1,12 @@
 defaults:
   - base@_here_ # ベースの設定ファイルを指定する
 
+model:
+  n_base_channels: 256
 
 train_data_skip_mod: 1
 val_check_interval: 10000
-max_epochs: 4
+max_epochs: 7
 
 accumulate_grad_batches: 1
 train_batch_size: 4
@@ -13,3 +15,13 @@ valid_batch_size: 4
 ema:
   use_ema: True
   decay: 0.995
+
+
+optimizer: 
+  name: Adan
+  lr: 4e-3
+  weight_decay: 0.02
+  eps: 1e-8
+  opt_betas: [0.98, 0.92, 0.99]
+  max_grad_norm: 0.0
+  no_prox: False

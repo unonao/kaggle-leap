@@ -4,7 +4,7 @@ modes: [train, valid, test, viz]
 
 
 dataset_dir: input/make_webdataset_batch/all
-scale_dir: output/preprocess/normalize_003_pressures_all/base
+scale_dir: output/preprocess/normalize_005_climate_method/bolton
 test_path: input/test.parquet
 sample_submission_path: input/sample_submission.parquet
 viz_notebook_path: notebook/result_viz_003.ipynb
@@ -52,6 +52,7 @@ unuse_cols_list:
 
 
 seq_feats: [
+  relative_humidity_all,
   cloud_snow_rate,
   cloud_water,
 ]

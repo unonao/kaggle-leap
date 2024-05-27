@@ -120,6 +120,18 @@ class Scaler:
         pressures_array = np.diff(pressures_array, n=1)
 
         feats = [x_array[:, :556]]
+        if "relative_humidity_all" in self.cfg.exp.seq_feats:
+            x_rh = (
+                cal_specific2relative_coef(
+                    temperature_array=x_array[:, 0:60],
+                    near_surface_air_pressure=x_array[:, 360],
+                    hyam=self.hyam,
+                    hybm=self.hybm,
+                    method=self.cfg.exp.rh_method,
+                )
+                * x_array[:, 60:120]
+            )
+            feats.append(x_rh)
         if "cloud_snow_rate" in self.cfg.exp.seq_feats:
             cloud_snow_rate_array = (
                 np.clip(
@@ -207,16 +219,6 @@ class Scaler:
         prepare
         """
         x, x_cat = self.process_features(x)
-        x_rh = (
-            cal_specific2relative_coef(
-                temperature_array=x[:, 0:60],
-                near_surface_air_pressure=x[:, 360],
-                hyam=self.hyam,
-                hybm=self.hybm,
-                method=self.cfg.exp.rh_method,
-            )
-            * x[:, 60:120]
-        )
 
         """
         scale
@@ -224,12 +226,9 @@ class Scaler:
         x[:, 0:60] = (x[:, 0:60] - self.feat_mean_dict["t_all"]) / (
             self.feat_std_dict["t_all"] + self.eps
         )
-        """
         x[:, 60:120] = (
             np.log1p(x[:, 60:120] * 1e9) - self.feat_mean_dict["q1_log_all"]
         ) / (self.feat_std_dict["q1_log_all"] + self.eps)
-        """
-        x[:, 60:120] = x_rh
         x[:, 120:180] = (
             np.log1p(x[:, 120:180] * 1e9) - self.feat_mean_dict["q2_log_all"]
         ) / (self.feat_std_dict["q2_log_all"] + self.eps)
@@ -774,17 +773,17 @@ class LeapModel(nn.Module):
         )
 
         self.t_head = MLP(
-            8 + n_base_channels,
+            9 + n_base_channels,
             output_hidden_sizes + [1],
             use_layer_norm=use_output_layer_norm,
         )
         self.q1_head = MLP(
-            4 + n_base_channels,
+            5 + n_base_channels,
             output_hidden_sizes + [2],
             use_layer_norm=use_output_layer_norm,
         )
         self.cloud_water_head = MLP(
-            4 + n_base_channels,
+            6 + n_base_channels,
             output_hidden_sizes + [4],
             use_layer_norm=use_output_layer_norm,
         )
@@ -800,7 +799,8 @@ class LeapModel(nn.Module):
         )
 
     def forward(self, x, x_cat):
-        x_cloud_snow_rate_array = x[:, 556 : 556 + 60].unsqueeze(-1)
+        relative_humidity_all = x[:, 556 : 556 + 60].unsqueeze(-1)
+        x_cloud_snow_rate_array = x[:, 556 + 60 : 556 + 120].unsqueeze(-1)
         x_cloud_water = x[:, 556 + 60 : 556 + 120].unsqueeze(-1)
         x_state_t = x[:, :60].unsqueeze(-1)
         x_state_q0001 = x[:, 60:120].unsqueeze(-1)
@@ -941,6 +941,7 @@ class LeapModel(nn.Module):
             torch.cat(
                 [
                     x_state_t,
+                    relative_humidity_all,
                     x_state_q0001,
                     x_state_q0002,
                     x_state_q0003,
@@ -958,6 +959,7 @@ class LeapModel(nn.Module):
                 [
                     x_state_t,
                     out_t,
+                    relative_humidity_all,
                     x_state_q0001,
                     x_cloud_water,
                     x,
@@ -972,6 +974,8 @@ class LeapModel(nn.Module):
                 [
                     x_state_t,
                     out_t,
+                    relative_humidity_all,
+                    x_state_q0001,
                     x_cloud_water,
                     x_cloud_snow_rate_array,
                     x,
