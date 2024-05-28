@@ -1,0 +1,12 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+scheduler:
+  name: ReduceLROnPlateau
+  mode: max
+  factor: 0.25
+  patience: 0
+  threshold: 1e-4
+  threshold_mode: abs
+  cooldown: 2
+

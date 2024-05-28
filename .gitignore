@@ -7,6 +7,7 @@
 /tmp
 /lightning_logs
 notebook/2024-05-04_eda_input_target.ipynb
+/local-ssh
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
