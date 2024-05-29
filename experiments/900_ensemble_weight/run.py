@@ -56,9 +56,7 @@ def ensemble(cfg, output_path):
 
     best_score = -1e40
     best_weights = None
-    ss_df = pl.read_csv(
-        "input/leap-atmospheric-physics-ai-climsim/sample_submission.csv", n_rows=1
-    )
+    ss_df = pl.read_parquet(cfg.exp.sample_submission_path, n_rows=1)
     weight_array = ss_df.select(
         [x for x in ss_df.columns if x != "sample_id"]
     ).to_numpy()[0]
