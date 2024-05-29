@@ -1,9 +1,6 @@
 defaults:
   - base_all@_here_ # ベースの設定ファイルを指定する
 
-model:
-  n_base_channels: 256
-
 scheduler:
   name: ReduceLROnPlateau
   mode: max
@@ -13,9 +10,12 @@ scheduler:
   threshold_mode: abs
   cooldown: 2
 
-optimizer: 
-  lr: 5e-4
-
 train_data_skip_mod: 1
 val_check_interval: 9000
 max_epochs: 4
+
+
+# model
+model:
+  same_height_hidden_sizes: [128, 128, 128]
+  output_hidden_sizes: [128, 128, 128]

@@ -1,8 +1,5 @@
 defaults:
-  - base_all@_here_ # ベースの設定ファイルを指定する
-
-model:
-  n_base_channels: 256
+  - base@_here_ # ベースの設定ファイルを指定する
 
 scheduler:
   name: ReduceLROnPlateau
@@ -12,9 +9,6 @@ scheduler:
   threshold: 1e-4
   threshold_mode: abs
   cooldown: 2
-
-optimizer: 
-  lr: 5e-4
 
 train_data_skip_mod: 1
 val_check_interval: 9000
