@@ -1440,7 +1440,7 @@ def main(cfg: DictConfig) -> None:
 
     pl_logger = WandbLogger(
         name=exp_name,
-        project="kaggle-leap",
+        project="kaggle-leap2",
         mode="disabled" if cfg.debug else None,
     )
     pl_logger.log_hyperparams(cfg)

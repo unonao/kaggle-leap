@@ -2,8 +2,6 @@ defaults:
   - base_all@_here_ # ベースの設定ファイルを指定する
 
 model:
-  same_height_hidden_sizes: [384, 384]
-  output_hidden_sizes: [384, 384]
   n_base_channels: 384
   dropout: 0.0
 
@@ -22,7 +20,7 @@ optimizer:
 
 train_data_skip_mod: 1
 val_check_interval: 36000
-max_epochs: 4
+max_epochs: 5
 
 accumulate_grad_batches: 4
 train_batch_size: 1
