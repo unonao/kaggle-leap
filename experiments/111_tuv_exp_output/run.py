@@ -1243,6 +1243,10 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
         output_path / "checkpoints" / "best_model.ckpt",
     )
 
+    del model, dm, trainer
+    gc.collect()
+    torch.cuda.empty_cache()
+
 
 def predict_valid(cfg: DictConfig, output_path: Path) -> None:
     # TODO: チームを組むならvalidationデータセットを揃えて出力を保存する
