@@ -23,7 +23,6 @@ import xarray as xr
 from adan import Adan
 from google.cloud import storage
 from hydra.core.hydra_config import HydraConfig
-from model import ModelArgs, Transformer
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import (
     LightningDataModule,
@@ -50,7 +49,6 @@ import utils
 import wandb
 from utils.humidity import cal_specific2relative_coef
 from utils.metric import score
-from utils.scheduler import get_cosine_with_min_lr_schedule_with_warmup
 
 
 def get_valid_name(cfg):
@@ -500,6 +498,208 @@ class LeapLightningDataModule(LightningDataModule):
         return dataset
 
 
+class DoubleConv(nn.Module):
+    """(convolution => [BN] => ReLU) * 2
+    height and width size will be changed to size-4.
+    """
+
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        mid_channels=None,
+        kernel_size=(3, 1),
+        padding=(1, 0),
+        use_batch_norm=True,
+    ):
+        super().__init__()
+        if not mid_channels:
+            mid_channels = out_channels
+        if use_batch_norm:
+            self.double_conv = nn.Sequential(
+                nn.Conv2d(
+                    in_channels,
+                    mid_channels,
+                    kernel_size=kernel_size,
+                    padding=padding,
+                    bias=False,
+                ),
+                nn.BatchNorm2d(mid_channels),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(
+                    mid_channels,
+                    out_channels,
+                    kernel_size=kernel_size,
+                    padding=padding,
+                    bias=False,
+                ),
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU(inplace=True),
+            )
+        else:
+            self.double_conv = nn.Sequential(
+                nn.Conv2d(
+                    in_channels,
+                    mid_channels,
+                    kernel_size=kernel_size,
+                    padding=padding,
+                    bias=False,
+                ),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(
+                    mid_channels,
+                    out_channels,
+                    kernel_size=kernel_size,
+                    padding=padding,
+                    bias=False,
+                ),
+                nn.ReLU(inplace=True),
+            )
+
+    def forward(self, x):
+        return self.double_conv(x)
+
+
+class Down(nn.Module):
+    """Downscaling with maxpool then double conv"""
+
+    def __init__(self, in_channels, out_channels, use_batch_norm=True):
+        super().__init__()
+        self.maxpool_conv = nn.Sequential(
+            nn.MaxPool2d((2, 1)),
+            DoubleConv(in_channels, out_channels, use_batch_norm=use_batch_norm),
+        )
+
+    def forward(self, x):
+        return self.maxpool_conv(x)
+
+
+class Up(nn.Module):
+    """Upscaling then double conv"""
+
+    def __init__(self, in_channels, out_channels, bilinear=True, use_batch_norm=True):
+        super().__init__()
+
+        # if bilinear, use the normal convolutions to reduce the number of channels
+        if bilinear:
+            self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            self.conv = DoubleConv(
+                in_channels,
+                out_channels,
+                in_channels // 2,
+                use_batch_norm=use_batch_norm,
+            )
+        else:
+            self.up = nn.ConvTranspose2d(
+                in_channels, in_channels // 2, kernel_size=(2, 1), stride=2
+            )
+            self.conv = DoubleConv(
+                in_channels, out_channels, use_batch_norm=use_batch_norm
+            )
+
+    def forward(self, x1, x2):
+        x1 = self.up(x1)
+        # input is CHW
+        diffY = x2.size()[2] - x1.size()[2]
+        diffX = x2.size()[3] - x1.size()[3]
+
+        x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2, diffY // 2, diffY - diffY // 2])
+        # if you have padding issues, see
+        # https://github.com/HaiyongJiang/U-Net-Pytorch-Unstructured-Buggy/commit/0e854509c2cea854e247a9c615f175f76fbb2e3a
+        # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
+        x = torch.cat([x2, x1], dim=1)
+        return self.conv(x)
+
+
+class OutConv(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(OutConv, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+    def forward(self, x):
+        return self.conv(x)
+
+
+class BottleneckEncoder(nn.Sequential):
+    # https://github.com/qubvel/segmentation_models.pytorch/blob/3bf4d6ef2bc9d41c2ab3436838aa22375dd0f23a/segmentation_models_pytorch/base/heads.py#L13
+    def __init__(self, in_channels, out_nums, pooling="avg", dropout=0.2):
+        if pooling not in ("max", "avg"):
+            raise ValueError(
+                "Pooling should be one of ('max', 'avg'), got {}.".format(pooling)
+            )
+        pool = nn.AdaptiveAvgPool2d(1) if pooling == "avg" else nn.AdaptiveMaxPool2d(1)
+        flatten = nn.Flatten()
+        dropout = nn.Dropout(p=dropout, inplace=True) if dropout else nn.Identity()
+        linear = nn.Linear(in_channels, out_nums, bias=True)
+        super().__init__(pool, flatten, dropout, linear)
+
+
+class UNet(nn.Module):
+    def __init__(
+        self,
+        n_channels,
+        n_classes,
+        bottleneck_out_nums,
+        depth=4,
+        dropout=0.2,
+        n_base_channels=32,
+        use_batch_norm=True,
+    ):
+        super(UNet, self).__init__()
+        bilinear = False
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        self.bilinear = bilinear
+
+        self.inc = DoubleConv(
+            n_channels,
+            n_base_channels,
+            use_batch_norm=use_batch_norm,
+        )
+        self.downs = nn.ModuleList(
+            [
+                Down(
+                    n_base_channels * (2**i),
+                    n_base_channels * (2 ** (i + 1)),
+                    use_batch_norm,
+                )
+                for i in range(depth)
+            ]
+        )
+        self.ups = nn.ModuleList(
+            [
+                Up(
+                    n_base_channels * (2 ** (depth - i)),
+                    n_base_channels * (2 ** (depth - i - 1)),
+                    bilinear,
+                    use_batch_norm,
+                )
+                for i in range(depth)
+            ]
+        )
+
+        self.outc = OutConv(n_base_channels * (2**depth), n_classes)
+
+        self.bottleneck_encoder = BottleneckEncoder(
+            16 * n_base_channels,
+            out_nums=bottleneck_out_nums,
+            pooling="avg",
+            dropout=dropout,
+        )
+
+    def forward(self, x):
+        x1 = self.inc(x)
+        xs = [x1]
+        for down in self.downs:
+            xs.append(down(xs[-1]))
+        x = xs[-1]
+        for i, up in enumerate(self.ups):
+            x = up(x, xs[-2 - i])
+        logits = self.outc(x)
+        bottleneck_feat = self.bottleneck_encoder(xs[-1])
+        return logits, bottleneck_feat
+
+
 class MLP(nn.Module):
     def __init__(self, in_size, hidden_sizes, use_layer_norm=False):
         super(MLP, self).__init__()
@@ -518,19 +718,6 @@ class MLP(nn.Module):
         return self.mlp(x)
 
 
-class ScalerMLP(nn.Sequential):
-    def __init__(self, in_channels, out_nums, pooling="avg", dropout=0.2):
-        if pooling not in ("max", "avg"):
-            raise ValueError(
-                "Pooling should be one of ('max', 'avg'), got {}.".format(pooling)
-            )
-        pool = nn.AdaptiveAvgPool1d(1) if pooling == "avg" else nn.AdaptiveMaxPool2d(1)
-        flatten = nn.Flatten()
-        dropout = nn.Dropout(p=dropout, inplace=True) if dropout else nn.Identity()
-        linear = nn.Linear(in_channels, out_nums, bias=True)
-        super().__init__(pool, flatten, dropout, linear)
-
-
 class LeapModel(nn.Module):
     def __init__(
         self,
@@ -538,10 +725,12 @@ class LeapModel(nn.Module):
         output_hidden_sizes=[60, 60],
         use_input_layer_norm=False,
         use_output_layer_norm=True,
+        use_batch_norm=True,
         embedding_dim=5,
         categorical_embedding_dim=5,
-        n_layers=4,
-        n_heads=8,
+        depth=4,
+        dropout=0.2,
+        n_base_channels=32,
         seq_feats=[],
         scalar_feats=[],
     ):
@@ -561,37 +750,41 @@ class LeapModel(nn.Module):
             previous_size, same_height_hidden_sizes, use_layer_norm=use_input_layer_norm
         )
 
-        n_base_dim = same_height_hidden_sizes[-1]
-        model_args = ModelArgs(dim=n_base_dim, n_layers=n_layers, n_heads=n_heads)
-        self.transformer = Transformer(model_args)
+        self.unet = UNet(
+            n_channels=same_height_hidden_sizes[-1],
+            n_classes=n_base_channels,
+            bottleneck_out_nums=8,
+            depth=depth,
+            dropout=dropout,
+            n_base_channels=n_base_channels,
+            use_batch_norm=use_batch_norm,
+        )
 
         self.t_head = MLP(
-            9 + n_base_dim,
+            9 + n_base_channels,
             output_hidden_sizes + [2],
             use_layer_norm=use_output_layer_norm,
         )
         self.q1_head = MLP(
-            5 + n_base_dim,
+            5 + n_base_channels,
             output_hidden_sizes + [2],
             use_layer_norm=use_output_layer_norm,
         )
         self.cloud_water_head = MLP(
-            6 + n_base_dim,
+            6 + n_base_channels,
             output_hidden_sizes + [4],
             use_layer_norm=use_output_layer_norm,
         )
         self.wind_head = nn.ModuleList(
             [
                 MLP(
-                    8 + n_base_dim,
+                    8 + n_base_channels,
                     output_hidden_sizes + [2],
                     use_layer_norm=use_output_layer_norm,
                 )
                 for _ in range(2)
             ]
         )
-
-        self.scalar_head = ScalerMLP(n_base_dim, 8, pooling="avg", dropout=0.0)
 
     def forward(self, x, x_cat):
         relative_humidity_all = x[:, 556 : 556 + 60].unsqueeze(-1)
@@ -658,14 +851,12 @@ class LeapModel(nn.Module):
         # (batch, 60, dim) -> (batch, 60, same_height_hidden_sizes[-1]*n_feat_channels)
         x = self.same_height_encoder(x)
 
-        """
-        transformer
-        """
-        x = self.transformer(x)  # ->(batch, 60, n_base_dim)
+        x = x.transpose(-1, -2).unsqueeze(-1)
+        x, class_logits = self.unet(x)
 
-        """
-        header
-        """
+        x = x.squeeze(-1)  # ->(batch, n_base_channels, 60)
+        x = x.transpose(-1, -2)  # ->(batch, 60, n_base_channels)
+
         out_t = self.t_head(
             torch.cat(
                 [
@@ -756,9 +947,6 @@ class LeapModel(nn.Module):
         out = torch.cat([out_t, out_q1, out_q2, out_q3, out_u, out_v], dim=2)
         out = out.transpose(-1, -2)
         out = out.flatten(start_dim=1)
-
-        class_logits = self.scalar_head(x.transpose(-1, -2))
-
         out = torch.cat([out, class_logits], dim=1)
 
         return out
@@ -954,7 +1142,7 @@ class LeapLightningModule(LightningModule):
         )
         """
 
-        if self.cfg.exp.scheduler.name == "CosineAnnealingWarmUp":
+        if self.cfg.exp.scheduler.name == "CosineAnnealingWarmRestarts":
             # 1epoch分をwarmupとするための記述
             num_warmup_steps = (
                 math.ceil(self.trainer.max_steps / self.cfg.exp.max_epochs) * 1
@@ -964,11 +1152,10 @@ class LeapLightningModule(LightningModule):
             if self.cfg.exp.val_check_interval:
                 num_warmup_steps = min(num_warmup_steps, self.cfg.exp.val_check_warmup)
             print(f"{num_warmup_steps=}")
-            scheduler = get_cosine_with_min_lr_schedule_with_warmup(
+            scheduler = get_cosine_schedule_with_warmup(
                 optimizer,
                 num_training_steps=self.trainer.max_steps,
                 num_warmup_steps=num_warmup_steps,
-                min_lr=self.cfg.exp.scheduler.min_lr,
             )
             return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
         elif self.cfg.exp.scheduler.name == "ReduceLROnPlateau":
@@ -994,11 +1181,6 @@ class LeapLightningModule(LightningModule):
                     "interval": "step" if self.cfg.exp.val_check_interval else "epoch",
                 },
             }
-
-    """
-    def backward(self, loss):
-        loss.backward(retain_graph=True)
-    """
 
 
 def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
