@@ -562,7 +562,9 @@ class LeapModel(nn.Module):
         )
 
         n_base_dim = same_height_hidden_sizes[-1]
-        model_args = ModelArgs(dim=n_base_dim, n_layers=n_layers, n_heads=n_heads)
+        model_args = ModelArgs(
+            dim=n_base_dim, n_layers=n_layers, n_heads=n_heads, device="cuda"
+        )
         self.transformer = Transformer(model_args)
 
         self.t_head = MLP(
@@ -994,6 +996,9 @@ class LeapLightningModule(LightningModule):
                     "interval": "step" if self.cfg.exp.val_check_interval else "epoch",
                 },
             }
+
+    def backward(self, loss):
+        loss.backward(retain_graph=True)
 
 
 def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:

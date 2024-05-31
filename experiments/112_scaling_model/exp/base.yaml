@@ -69,7 +69,7 @@ model:
   use_output_layer_norm: True
   embedding_dim: 10
   categorical_embedding_dim: 5
-  n_layers: 4
+  n_layers: 8
   n_heads: 8 # same_height_hidden_sizes[-1]の約数
 
 
