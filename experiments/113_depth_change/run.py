@@ -678,10 +678,10 @@ class UNet(nn.Module):
             ]
         )
 
-        self.outc = OutConv(n_base_channels * (2**depth), n_classes)
+        self.outc = OutConv(n_base_channels, n_classes)
 
         self.bottleneck_encoder = BottleneckEncoder(
-            16 * n_base_channels,
+            n_base_channels * (2**depth),
             out_nums=bottleneck_out_nums,
             pooling="avg",
             dropout=dropout,

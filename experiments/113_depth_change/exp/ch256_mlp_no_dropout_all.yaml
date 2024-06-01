@@ -2,8 +2,6 @@ defaults:
   - base_all@_here_ # ベースの設定ファイルを指定する
 
 model:
-  same_height_hidden_sizes: [256, 256]
-  output_hidden_sizes: [256, 256]
   n_base_channels: 256
   dropout: 0.0
 
@@ -17,7 +15,7 @@ scheduler:
   threshold_mode: abs
   cooldown: 2
 
-optimizer:
+optimizer: 
   lr: 5e-4
 
 train_data_skip_mod: 1
