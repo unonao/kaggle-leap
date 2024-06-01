@@ -13,3 +13,7 @@ scheduler:
 train_data_skip_mod: 1
 val_check_interval: 9000
 max_epochs: 4
+
+
+optimizer:
+  lr: 5e-4 # 1e-3 はnanに
