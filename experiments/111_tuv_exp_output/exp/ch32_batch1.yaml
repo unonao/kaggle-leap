@@ -1,0 +1,23 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+model:
+  n_base_channels: 32
+
+scheduler:
+  name: ReduceLROnPlateau
+  mode: max
+  factor: 0.25
+  patience: 0
+  threshold: 1e-4
+  threshold_mode: abs
+  cooldown: 2
+
+optimizer: 
+  lr: 5e-4 # バッチサイズ1/４倍したので学習率も1/４倍に
+
+train_data_skip_mod: 1
+val_check_interval: 36000
+max_epochs: 8
+train_batch_size: 1
+valid_batch_size: 1
