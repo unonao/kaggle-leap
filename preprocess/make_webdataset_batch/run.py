@@ -482,7 +482,7 @@ def make_webdataset_month(
     while True:
         try:
             _ = snapshot_download(
-                repo_id="LEAP/ClimSim_low-res",
+                repo_id=cfg.exp.repo_id,
                 allow_patterns=allow_patterns,
                 local_dir=TMP_DIR,
                 cache_dir=TMP_DIR / "cache",
@@ -570,7 +570,7 @@ def make_webdataset(cfg: DictConfig, exp_name) -> None:
     data_utils.normalize = False
 
     month_dirs = (
-        [f"train/0001-{str(m).zfill(2)}" for m in range(2, 13)]
+        [f"train/0001-{str(m).zfill(2)}" for m in range(5, 13)]
         + [f"train/000{y}-{str(m).zfill(2)}" for y in range(2, 9) for m in range(1, 13)]
         + ["train/0009-01"]
     )

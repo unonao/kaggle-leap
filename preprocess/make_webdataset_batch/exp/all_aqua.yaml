@@ -3,4 +3,4 @@ defaults:
 
 shard_size_m: 100
 break_n_months: null
-repo_id: LEAP/ClimSim_low-res
+repo_id: LEAP/ClimSim_low-res_aqua-planet
