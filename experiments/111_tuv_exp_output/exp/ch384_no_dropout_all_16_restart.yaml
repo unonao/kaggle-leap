@@ -4,7 +4,7 @@ defaults:
 restart_ckpt_path: output/experiments/111_tuv_exp_output/ch384_no_dropout_all_16/checkpoints/epoch=0-step=9000.ckpt
 
 optimizer: 
-  lr: 2e-4
+  lr: 4e-5
 
 
 ema:
