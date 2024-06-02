@@ -1,0 +1,12 @@
+defaults:
+  - ch384_no_dropout_all_16@_here_ # ベースの設定ファイルを指定する
+
+restart_ckpt_path: output/experiments/111_tuv_exp_output/ch384_no_dropout_all_16/checkpoints/epoch=0-step=9000.ckpt
+
+optimizer: 
+  lr: 2e-4
+
+
+ema:
+  use_ema: True
+  decay: 0.98

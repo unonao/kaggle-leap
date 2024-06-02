@@ -10,6 +10,7 @@ sample_submission_path: input/sample_submission.parquet
 viz_notebook_path: notebook/result_viz_003.ipynb
 tmelt_tice_dir: output/preprocess/tmelt_tice/001
 pred_checkpoint_path: null
+restart_ckpt_path: null
 rh_method: Bolton
 
 
