@@ -4,7 +4,7 @@ modes: [train, valid, test, viz]
 
 
 dataset_dir: input/make_webdataset_batch/all
-additional_dataset_dir: input/make_webdataset_batch/all_aqua
+additional_dataset_dir: null #input/make_webdataset_batch/all_aqua
 
 scale_dir: output/preprocess/normalize_006_air/bolton
 test_path: input/test.parquet
