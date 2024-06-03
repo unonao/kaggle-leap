@@ -420,7 +420,7 @@ class LeapLightningDataModule(LightningDataModule):
                 if mode == "train" and self.cfg.exp.additional_dataset_dir:
                     tar_list += sorted(
                         glob.glob(
-                            f"{self.cfg.exp.additional_dataset_dir}/shards_{year:04d}-{month:02d}_aug/*.tar"
+                            f"{self.cfg.exp.additional_dataset_dir}/shards_{year:04d}-{month:02d}/*.tar"
                         )
                     )
         # 1/data_skip_mod の数にする
