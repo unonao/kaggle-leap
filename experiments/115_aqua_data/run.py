@@ -417,7 +417,7 @@ class LeapLightningDataModule(LightningDataModule):
                     )
                 )
                 tar_list += tmp
-                if mode == "train":
+                if mode == "train" and self.cfg.exp.additional_dataset_dir:
                     tar_list += sorted(
                         glob.glob(
                             f"{self.cfg.exp.additional_dataset_dir}/shards_{year:04d}-{month:02d}_aug/*.tar"
@@ -457,6 +457,18 @@ class LeapLightningDataModule(LightningDataModule):
                         dataset_size = json_data["dataset size"]
                         tmp += dataset_size
                 total_size += tmp
+
+                if mode == "train" and self.cfg.exp.additional_dataset_dir:
+                    tmp = 0
+                    paths = glob.glob(
+                        f"{self.cfg.exp.additional_dataset_dir}/shards_{year:04d}-{month:02d}/dataset-size.json"
+                    )
+                    for path in paths:
+                        with open(path, "r") as f:
+                            json_data = json.load(f)
+                            dataset_size = json_data["dataset size"]
+                            tmp += dataset_size
+                    total_size += tmp
 
         # 1/data_skip_mod の数にする
         if mode == "train" and self.cfg.exp.train_data_skip_mod:
