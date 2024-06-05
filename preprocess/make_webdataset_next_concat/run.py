@@ -1,7 +1,7 @@
+import gc
 import glob
 import json
 import os
-import random
 import shutil
 import sys
 import time
@@ -433,7 +433,9 @@ class DataUtils:
         ds_target = ds_target.to_stacked_array(
             "mlvar", sample_dims=["batch"], name="mlo"
         )
-        return (ds_input.values, ds_target.values)
+        x = ds_input.values
+        x = np.delete(x, 375, 1)  #  cam_in_SNOWHICE を削除
+        return (x, ds_target.values)
 
 
 def upload_directory_to_gcs(local_directory, bucket_name, gcs_directory):
@@ -465,11 +467,11 @@ def make_webdataset_month(
     cfg: DictConfig, exp_name: str, month_dir: str, data_utils: DataUtils
 ) -> None:
     # clear tmp dir
+    month_dir = Path(month_dir)
     if os.path.exists(TMP_DIR):
         shutil.rmtree(TMP_DIR)
     TMP_DIR.mkdir(exist_ok=True)
 
-    month_dir = Path(month_dir)
     # Download
     print("Downloading...")
     allow_patterns = (
@@ -483,7 +485,7 @@ def make_webdataset_month(
     while True:
         try:
             _ = snapshot_download(
-                repo_id="LEAP/ClimSim_low-res",
+                repo_id=cfg.exp.repo_id,
                 allow_patterns=allow_patterns,
                 local_dir=TMP_DIR,
                 cache_dir=TMP_DIR / "cache",
@@ -498,7 +500,6 @@ def make_webdataset_month(
                 raise e
             retry_count += 1
             time.sleep(retry_count)
-
     # Make webdataset
     print("Making webdataset...")
     shard_path = TMP_DIR / f"shards_{month_dir.name}"
@@ -511,30 +512,53 @@ def make_webdataset_month(
     shard_size = int(cfg.exp.shard_size_m * 1000**2)  # shard_size_m MB each
 
     dataset_size = 0
-    input_paths = glob(str(TMP_DIR / month_dir / "*.mli.*.nc"))
-    input_paths = sorted(input_paths)
-    # シャッフルして学習時に色々なデータが出現するようにする
-    random.seed(cfg.exp.seed)
-    random.shuffle(input_paths)
+    sorted_input_paths = sorted(glob(str(TMP_DIR / month_dir / "*.mli.*.nc")))
+
+    # seed 固定
+    np.random.seed(cfg.exp.seed)
+
+    # ランダムにしたほうが webdataset でバランスよくバッチに入るはず
+    random_ids = np.random.permutation(list(range(len(sorted_input_paths))))
+
+    # cache_data = {}
+
     with wds.ShardWriter(
         shard_filename, maxsize=shard_size, maxcount=1e7
-    ) as sink, tqdm(input_paths) as pbar:
-        for i, input_path in enumerate(pbar):
-            input_data, output_data = data_utils.gen(input_path)
-            input_path = Path(input_path)
-            file_name_text = input_path.stem.split(".")[-1]
+    ) as sink, tqdm(random_ids) as pbar:
+        for i, index in enumerate(pbar):
+            if index + cfg.exp.next_skip >= len(sorted_input_paths):
+                continue
 
-            if i == 0:
-                print(f"{input_data.shape=}")
+            base_input_path = sorted_input_paths[index]
+            next_input_path = sorted_input_paths[index + cfg.exp.next_skip]
+            """
+            if cache_data.get(base_input_path) is None:
+                base_input_data, base_output_data = data_utils.gen(base_input_path)
+                cache_data[base_input_path] = (base_input_data, base_output_data)
+            else:
+                base_input_data, base_output_data = cache_data[base_input_path]
+
+            if cache_data.get(next_input_path) is None:
+                next_input_data, next_output_data = data_utils.gen(next_input_path)
+                cache_data[next_input_path] = (next_input_data, next_output_data)
+            else:
+                next_input_data, next_output_data = cache_data[next_input_path]
+            """
+            base_input_data, base_output_data = data_utils.gen(base_input_path)
+            next_input_data, next_output_data = data_utils.gen(next_input_path)
+            input_path = Path(base_input_path)
+            file_name_text = input_path.stem.split(".")[-1]
 
             write_obj = {
                 "__key__": f"{file_name_text}",
-                "input.npy": input_data,
-                "output.npy": output_data,
+                "base_input.npy": base_input_data,
+                "base_output.npy": base_output_data,
+                "next_input.npy": next_input_data,
+                "next_output.npy": next_output_data,
             }
             sink.write(write_obj)
+            dataset_size += len(base_input_data)
 
-            dataset_size += len(input_data)
     with open(str(shard_path / "dataset-size.json"), "w") as fp:
         json.dump(
             {
