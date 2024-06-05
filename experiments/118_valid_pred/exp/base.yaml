@@ -16,7 +16,8 @@ rh_method: Bolton
 
 # data 指定期間内のデータを利用。skip_modで間引く
 train_start: [1, 2] #1の2月
-train_end: [8, 1]
+train_end: [7, 1]
+# 1年分開けておく
 valid_start: [8, 2]
 valid_end: [9, 1]
 
