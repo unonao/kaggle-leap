@@ -1,4 +1,8 @@
 # メモ
 
-python experiments/117_smoothL1/run.py exp=ch32_lr10
+python experiments/118_valid_pred/run.py exp=ch32_decay_001
+python experiments/118_valid_pred/run.py exp=ch32_beta3_001
+
+python experiments/118_valid_pred/run.py exp=ch32_decay_002
+python experiments/118_valid_pred/run.py exp=ch32_beta3_002
 
