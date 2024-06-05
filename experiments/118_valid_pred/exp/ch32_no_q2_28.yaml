@@ -1,0 +1,38 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+model:
+  n_base_channels: 32
+
+scheduler:
+  name: ReduceLROnPlateau
+  mode: max
+  factor: 0.25
+  patience: 0
+  threshold: 1e-4
+  threshold_mode: abs
+  cooldown: 2
+
+train_data_skip_mod: 1
+val_check_interval: 7700
+max_epochs: 4
+
+
+fill_target: [
+  ptend_q0002_12,
+  ptend_q0002_13,
+  ptend_q0002_14,
+  ptend_q0002_15,
+  ptend_q0002_16,
+  ptend_q0002_17,
+  ptend_q0002_18,
+  ptend_q0002_19,
+  ptend_q0002_20,
+  ptend_q0002_21,
+  ptend_q0002_22,
+  ptend_q0002_23,
+  ptend_q0002_24,
+  ptend_q0002_25,
+  ptend_q0002_26,
+  ptend_q0002_27, # ptend_q0002_27 0.9515178363448382
+]
