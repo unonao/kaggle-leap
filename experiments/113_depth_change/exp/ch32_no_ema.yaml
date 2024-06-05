@@ -14,5 +14,9 @@ scheduler:
   cooldown: 2
 
 train_data_skip_mod: 1
-val_check_interval: 7700
+val_check_interval: 9000
 max_epochs: 4
+
+
+ema:
+  use_ema: False
