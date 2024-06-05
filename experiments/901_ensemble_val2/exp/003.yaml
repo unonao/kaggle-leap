@@ -1,0 +1,13 @@
+# r2_score: 0.777796105385758
+seed: 7
+sample_submission_path: input/sample_submission.parquet
+
+exp_names:
+  - 111_tuv_exp_output/ch256_mlp_no_dropout_all # 0.7742
+  - 109_air_all_norm/ch256_all # 0.773
+  - 097_attention_scalar/003_all # 0.7728
+
+weights_list:
+  - [0.4, 0.4, 0.2]
+  - [0.4, 0.3, 0.3]
+  - [0.34, 0.33, 0.33]

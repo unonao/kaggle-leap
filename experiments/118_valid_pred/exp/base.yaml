@@ -1,6 +1,6 @@
 seed: 7
 
-modes: [train, valid, test, viz]
+modes: [train, valid, valid2, test, viz]
 
 
 dataset_dir: input/make_webdataset_batch/all

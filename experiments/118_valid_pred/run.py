@@ -18,7 +18,6 @@ import polars as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import wandb
 import webdataset as wds
 import xarray as xr
 from adan import Adan
@@ -47,6 +46,7 @@ from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
 
 import utils
+import wandb
 from utils.humidity import cal_specific2relative_coef
 from utils.metric import score
 
@@ -274,6 +274,13 @@ class Scaler:
             self.cfg.exp.outlier_std_rate,
         ), x_cat
 
+    """
+    def scale_output_1d(self, y):
+        y = y[None, :]
+        y = self.scale_output(y).reshape(-1)
+        return y
+    """
+
     def scale_output(self, y):
         y = (y - self.y_mean) / self.y_rms_sub
         return y
@@ -312,10 +319,7 @@ class Scaler:
             y <= 1e60, axis=1
         )  # y が lower_bound と upper_bound の間に収まらなければその行をスキップしていた
 
-        if x.ndim == 1:
-            x, x_cat = self.scale_input_1d(x)
-        else:
-            x, x_cat = self.scale_input(x)
+        x, x_cat = self.scale_input(x)
         y = self.scale_output(y)
         return x, x_cat, y, filter_bool
 
@@ -349,10 +353,10 @@ class LeapLightningDataModule(LightningDataModule):
         def __len__(self):
             return self.x.shape[0]
 
-        def __getitems__(self, index_list):
-            original_x = self.x[index_list]
-            original_y = self.y[index_list]
-            x, x_cat, _, _ = self.scaler.filter_and_scale(original_x, original_y)
+        def __getitem__(self, index):
+            original_x = self.x[index]
+            original_y = self.y[index]
+            x, x_cat = self.scaler.scale_input_1d(original_x)
             return (
                 torch.from_numpy(x),
                 torch.from_numpy(x_cat),
@@ -1392,6 +1396,8 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
             f"r2_score/{valid_name}": r2_score,
         }
     )
+    del predict_df, label_df
+    gc.collect()
 
 
 def predict_val2(cfg: DictConfig, output_path: Path) -> None:
@@ -1414,24 +1420,16 @@ def predict_val2(cfg: DictConfig, output_path: Path) -> None:
     model = model.to("cuda")
     model.eval()
     for x, x_cat, original_x, original_y in tqdm(dataloader):
-        x, x_cat, original_x, original_y = (
+        x, x_cat = (
             x.to("cuda"),
             x_cat.to("cuda"),
-            original_x.to("cuda"),
-            original_y.to("cuda"),
         )
-        x = torch.flatten(x, start_dim=0, end_dim=1)
-        x_cat = torch.flatten(x_cat, start_dim=0, end_dim=1)
-        original_x = torch.flatten(original_x, start_dim=0, end_dim=1)
-        original_y = torch.flatten(original_y, start_dim=0, end_dim=1)
         with torch.no_grad():
             out = model(x.to(torch_dtype), x_cat.to(torch.long))
 
         original_xs.append(original_x.cpu().to(torch.float64))
         preds.append(out.cpu().to(torch.float64))
         labels.append(original_y.cpu())
-        if cfg.debug:
-            break
 
     with utils.trace("save predict"):
         original_xs = torch.cat(original_xs).numpy()
@@ -1443,6 +1441,7 @@ def predict_val2(cfg: DictConfig, output_path: Path) -> None:
         ).reset_index()
         original_xs_df.to_parquet(output_path / "val2_original_xs.parquet")
         del original_xs_df
+        del original_xs
         gc.collect()
 
         original_predict_df = pd.DataFrame(
@@ -1458,9 +1457,6 @@ def predict_val2(cfg: DictConfig, output_path: Path) -> None:
         original_label_df.to_parquet(output_path / "val2_label.parquet")
         del original_label_df
         gc.collect()
-
-    del original_xs
-    gc.collect()
 
     # weight (weight zero もあるのでかけておく)
     ss_df = pl.read_csv(
@@ -1487,17 +1483,20 @@ def predict_val2(cfg: DictConfig, output_path: Path) -> None:
             "r2_score/val2": r2_score,
         }
     )
+    del predict_df, label_df
+    gc.collect()
 
     # save
     val2_df = pl.concat(
         [
-            val2_df["sample_id"],
+            val2_df.select("sample_id"),
             pl.from_numpy(preds * weight_array, schema=ss_df.columns[1:]),
         ],
         how="horizontal",
     )
     print(val2_df)
     val2_df.write_parquet(output_path / "valid_pred.parquet")
+    del val2_df
 
 
 def predict_test(cfg: DictConfig, output_path: Path) -> None:
@@ -1545,7 +1544,7 @@ def predict_test(cfg: DictConfig, output_path: Path) -> None:
         how="horizontal",
     )
 
-    sample_submission_df.write_csv(output_path / "submission.csv")
+    sample_submission_df.write_parquet(output_path / "submission.parquet")
     print(sample_submission_df)
 
 
@@ -1598,6 +1597,8 @@ def main(cfg: DictConfig) -> None:
         train(cfg, output_path, pl_logger)
     if "valid" in cfg.exp.modes:
         predict_valid(cfg, output_path)
+    if "valid2" in cfg.exp.modes:
+        predict_val2(cfg, output_path)
     if "test" in cfg.exp.modes:
         predict_test(cfg, output_path)
     if "viz" in cfg.exp.modes:
