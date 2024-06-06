@@ -8,4 +8,4 @@ max_epochs: 7
 # model
 model:
   n_base_channels: 384
-  g_mid_channels: 48
+  g_mid_channels: 128
