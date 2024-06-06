@@ -1,0 +1,12 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+train_data_skip_mod: 70 # 元データの10%
+max_epochs: 7
+
+
+# model
+model:
+  n_base_channels: 384
+  g_mid_channels: 384
+  g_depth: 3
