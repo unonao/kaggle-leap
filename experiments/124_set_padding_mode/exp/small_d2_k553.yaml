@@ -1,0 +1,13 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+train_data_skip_mod: 70 # 元データの10%
+max_epochs: 7
+
+
+# model
+model:
+  g_kernel_size: [5, 5, 3]
+  g_padding: [2, 2, 1]
+  g_depth: 2
+  g_padding_mode: circular

@@ -771,69 +771,54 @@ class MLP(nn.Module):
         return self.mlp(x)
 
 
-class Conv3DBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, padding):
-        super(Conv3DBlock, self).__init__()
-        self.conv1 = nn.Conv3d(
-            in_channels,
-            out_channels,
-            kernel_size=kernel_size,
-            padding=padding,
-            padding_mode="circular",
-        )
-        self.bn1 = nn.BatchNorm3d(out_channels)
-        self.conv2 = nn.Conv3d(
-            out_channels,
-            out_channels,
-            kernel_size=kernel_size,
-            padding=padding,
-            padding_mode="circular",
-        )
-        self.bn2 = nn.BatchNorm3d(out_channels)
-
-        # スキップ接続用
-        if in_channels != out_channels:
-            self.skip = nn.Conv3d(in_channels, out_channels, kernel_size=1)
-        else:
-            self.skip = None
-
-    def forward(self, x):
-        identity = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = F.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-
-        if self.skip is not None:
-            identity = self.skip(identity)
-
-        out += identity
-        out = F.relu(out)
-
-        return out
-
-
 class GlobalConv3d(nn.Module):
     def __init__(
         self,
         n_channels,
         kernel_size=(5, 3, 3),
-        padding=(1, 0),
+        padding=(2, 1, 1),
         depth=3,
+        padding_mode="circular",
     ):
         super(GlobalConv3d, self).__init__()
-        self.conv = nn.Sequential(
-            *[
-                Conv3DBlock(n_channels, n_channels, kernel_size, padding)
-                for _ in range(depth)
-            ]
-        )
+
+        self.padding = padding
+        self.padding_mode = padding_mode
+        conv_list = []
+        for i in range(depth):
+            conv_list.append(
+                nn.Sequential(
+                    nn.Conv3d(
+                        n_channels,
+                        n_channels,
+                        kernel_size=kernel_size,
+                        padding=padding,
+                        padding_mode=padding_mode,
+                        bias=False,
+                    ),
+                    nn.BatchNorm3d(n_channels),
+                    nn.ReLU(inplace=True),
+                )
+            )
+        self.conv_list = nn.ModuleList(conv_list)
 
     def forward(self, x):
-        x = self.conv(x)
+        if self.padding_mode == "circular":
+            # 最後の次元は鉛直方向でzeroにしたいので paddingしておく
+            x = F.pad(
+                x,
+                (self.padding[-1], self.padding[-1]),
+                mode="constant",
+                value=0,
+            )
+
+        # skip connection
+        for conv in self.conv_list:
+            x = x + conv(x)
+
+        if self.padding_mode == "circular":
+            x = x[:, :, :, :, self.padding[-1] : -self.padding[-1]]
+
         return x
 
 
@@ -853,6 +838,7 @@ class LeapModel(nn.Module):
         g_kernel_size=(5, 3, 3),
         g_padding=(3, 1, 1),
         g_depth=3,
+        g_padding_mode="circular",
         seq_feats=[],
         scalar_feats=[],
     ):
@@ -888,6 +874,7 @@ class LeapModel(nn.Module):
             kernel_size=g_kernel_size,
             padding=g_padding,
             depth=g_depth,
+            padding_mode=g_padding_mode,
         )
 
         self.t_head = MLP(
