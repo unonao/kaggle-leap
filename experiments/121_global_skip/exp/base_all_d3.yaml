@@ -10,8 +10,13 @@ scheduler:
   threshold_mode: abs
   cooldown: 2
   min_lr: 0
-
+  
 train_data_skip_mod: 1
 valid_data_skip_mod: 7
 val_check_interval: 36000
 max_epochs: 4
+
+
+model:
+  g_depth: 3
+  
