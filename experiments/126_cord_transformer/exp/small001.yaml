@@ -1,0 +1,16 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+train_data_skip_mod: 70
+valid_data_skip_mod: 14
+additional_data_skip_mod: 10
+max_epochs: 7
+
+
+# model
+model:
+  g_dim: 64
+  g_nhead: 2
+  g_num_layers: 2
+  g_dim_feedforward: 3840 # 3840 = 64 * 60
+  g_dropout: 0.0
