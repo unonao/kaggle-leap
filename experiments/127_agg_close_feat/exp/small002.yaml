@@ -9,8 +9,6 @@ max_epochs: 7
 
 # model
 model:
-  g_dim: 64
-  g_nhead: 1
-  g_num_layers: 1
-  g_dim_feedforward: 3840 # 3840 = 64 * 60
-  g_dropout: 0.0
+  power: 2.0
+  top_k: 25
+  use_self: False
