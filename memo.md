@@ -9,6 +9,6 @@ python experiments/122_finetune/run.py exp=base_all_d3_k553
 
 python experiments/122_finetune/run.py exp=base_all_d3_k553 debug=True
 
-python experiments/127_agg_close_feat/run.py exp=small002
-python experiments/127_agg_close_feat/run.py exp=small003
-python experiments/127_agg_close_feat/run.py exp=small004
+python experiments/127_agg_close_feat/run.py exp=small005
+python experiments/127_agg_close_feat/run.py exp=small006
+python experiments/127_agg_close_feat/run.py exp=small007
