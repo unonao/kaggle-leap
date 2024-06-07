@@ -487,7 +487,7 @@ class LeapLightningDataModule(LightningDataModule):
         )
         return DataLoader(
             self.val2_dataset,
-            batch_size=self.cfg.exp.valid_batch_size * 384,
+            batch_size=self.cfg.exp.valid_batch_size,
             num_workers=self.cfg.exp.num_workers,
             shuffle=False,
             pin_memory=False,
@@ -502,7 +502,7 @@ class LeapLightningDataModule(LightningDataModule):
         )
         return DataLoader(
             self.test_dataset,
-            batch_size=self.cfg.exp.valid_batch_size * 384,
+            batch_size=self.cfg.exp.valid_batch_size,
             num_workers=self.cfg.exp.num_workers,
             shuffle=False,
             pin_memory=False,
