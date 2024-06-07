@@ -21,8 +21,8 @@ def main(cfg: DictConfig) -> None:
 
     train_df = pl.scan_parquet(Path(cfg.dir.input_dir) / "train.parquet")
 
-    # 末尾の640,000だけ取り出し
-    valid_df = train_df.tail(640_000).collect()
+    # 末尾のだけ取り出し
+    valid_df = train_df.tail(cfg.exp.n_rows).collect()
     print(valid_df)
 
     valid_df.write_parquet(output_path / "valid.parquet")
