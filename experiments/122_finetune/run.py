@@ -1630,7 +1630,7 @@ def predict_test(cfg: DictConfig, output_path: Path) -> None:
     sample_submission_df = pl.read_parquet(
         cfg.exp.sample_submission_path,
         n_rows=(None if cfg.debug is False else len(preds)),
-    )
+    )[: len(preds)]
     preds *= sample_submission_df[:, 1:].to_numpy()
 
     sample_submission_df = pl.concat(
