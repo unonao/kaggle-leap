@@ -9,6 +9,6 @@ max_epochs: 7
 
 # model
 model:
-  power: 8.0
-  top_k: 49
+  power: 10.0
+  top_k: 8
   use_self: False
