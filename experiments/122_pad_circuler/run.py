@@ -349,10 +349,11 @@ class LeapLightningDataModule(LightningDataModule):
             # 提供データは cam_in_SNOWHICE は削除済みなので削除しないが、idを削除する
             self.x = valid_df[:, 1:557].to_numpy()
             self.y = valid_df[:, 557:].to_numpy()
-
             # 長さは384の倍数にする
-            self.x = self.x[: -(self.x.shape[0] % 384)]
-            self.y = self.y[: -(self.y.shape[0] % 384)]
+            mod = self.x.shape[0] % 384
+            if mod > 0:
+                self.x = self.x[:-mod]
+                self.y = self.y[:-mod]
 
         def __len__(self):
             return self.x.shape[0] // 384
@@ -378,7 +379,9 @@ class LeapLightningDataModule(LightningDataModule):
             self.x = test_df[:, 1:].to_numpy()
 
             # 長さは384の倍数にする
-            self.x = self.x[: -(self.x.shape[0] % 384)]
+            mod = self.x.shape[0] % 384
+            if mod > 0:
+                self.x = self.x[:-mod]
 
         def __len__(self):
             return self.x.shape[0] // 384
@@ -421,7 +424,8 @@ class LeapLightningDataModule(LightningDataModule):
         validation合わせるために作った推論用のdataloader
         """
         self.valid_df = pl.read_parquet(
-            self.cfg.exp.valid_path, n_rows=(None if self.cfg.debug is False else 500)
+            self.cfg.exp.valid_path,
+            n_rows=(None if self.cfg.debug is False else 384 * 2),
         )
         self.val2_dataset = self.Val2Dataset(
             self.cfg, self.valid_df, self.scaler, self.hyai, self.hybi
@@ -1478,7 +1482,6 @@ def predict_valid(cfg: DictConfig, output_path: Path) -> None:
     gc.collect()
 
 
-"""
 def predict_val2(cfg: DictConfig, output_path: Path) -> None:
     torch_dtype = torch.float64 if "64" in cfg.exp.precision else torch.float32
     checkpoint_path = (
@@ -1515,9 +1518,9 @@ def predict_val2(cfg: DictConfig, output_path: Path) -> None:
         labels.append(original_y)
 
     with utils.trace("save predict"):
-        original_xs = torch.cat(original_xs).numpy()
-        preds = Scaler(cfg).inv_scale_output(torch.cat(preds).numpy(), original_xs)
-        labels = torch.cat(labels).numpy()
+        original_xs = np.concatenate(original_xs, axis=0)
+        preds = Scaler(cfg).inv_scale_output(np.concatenate(preds, axis=0), original_xs)
+        labels = np.concatenate(labels, axis=0)
 
         original_xs_df = pd.DataFrame(
             original_xs, columns=[i for i in range(original_xs.shape[1])]
@@ -1547,7 +1550,7 @@ def predict_val2(cfg: DictConfig, output_path: Path) -> None:
     )
     weight_array = ss_df.select(
         [x for x in ss_df.columns if x != "sample_id"]
-    ).to_numpy()[0]    
+    ).to_numpy()[0]
     predict_df = pd.DataFrame(
         preds * weight_array, columns=[i for i in range(preds.shape[1])]
     ).reset_index()
@@ -1577,11 +1580,9 @@ def predict_val2(cfg: DictConfig, output_path: Path) -> None:
         ],
         how="horizontal",
     )
-    # 末尾は
     print(val2_df)
     val2_df.write_parquet(output_path / "valid_pred.parquet")
     del val2_df
-"""
 
 
 def predict_test(cfg: DictConfig, output_path: Path) -> None:
@@ -1618,8 +1619,9 @@ def predict_test(cfg: DictConfig, output_path: Path) -> None:
 
     # load sample
     sample_submission_df = pl.read_parquet(
-        cfg.exp.sample_submission_path, n_rows=(None if cfg.debug is False else 500)
-    )[: len(preds)]
+        cfg.exp.sample_submission_path,
+        n_rows=(None if cfg.debug is False else len(preds)),
+    )
     preds *= sample_submission_df[:, 1:].to_numpy()
 
     sample_submission_df = pl.concat(
@@ -1632,7 +1634,8 @@ def predict_test(cfg: DictConfig, output_path: Path) -> None:
 
     # 末尾の足りない部分を結合する
     fill_submission_df = pl.read_parquet(
-        cfg.exp.fill_submission_path, n_rows=(None if cfg.debug is False else 500)
+        cfg.exp.fill_submission_path,
+        n_rows=(None if cfg.debug is False else len(test_df)),
     )[len(preds) :]
     sample_submission_df = pl.concat(
         [
@@ -1695,8 +1698,8 @@ def main(cfg: DictConfig) -> None:
         train(cfg, output_path, pl_logger)
     if "valid" in cfg.exp.modes:
         predict_valid(cfg, output_path)
-    # if "valid2" in cfg.exp.modes:
-    # predict_val2(cfg, output_path)
+    if "valid2" in cfg.exp.modes:
+        predict_val2(cfg, output_path)
     if "test" in cfg.exp.modes:
         predict_test(cfg, output_path)
     if "viz" in cfg.exp.modes:

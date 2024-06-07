@@ -11,9 +11,9 @@ sample_submission_path: input/sample_submission.parquet
 viz_notebook_path: notebook/result_viz_003.ipynb
 tmelt_tice_dir: output/preprocess/tmelt_tice/001
 pred_checkpoint_path: null
-restart_ckpt_path: null
 rh_method: Bolton
 
+restart_ckpt_path: output/experiments/122_pad_circuler/base_all_d3_k553/checkpoints/best_model.ckpt
 
 # data 指定期間内のデータを利用。skip_modで間引く
 train_start: [1, 2] #1の2月
@@ -76,10 +76,9 @@ model:
   depth: 3
   dropout: 0.0
   n_base_channels: 384
-  g_kernel_size: [5, 3, 3]
-  g_padding: [2, 1, 1]
-  g_depth: 2
-
+  g_kernel_size: [5, 5, 3]
+  g_padding: [2, 2, 1]
+  g_depth: 3
 
 norm_seq: False
 

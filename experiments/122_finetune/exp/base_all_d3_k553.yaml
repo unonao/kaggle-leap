@@ -10,9 +10,9 @@ train_end: [9, 1]
 valid_start: [7, 2]
 valid_end: [8, 1]
 
-train_data_skip_mod: 2
-valid_data_skip_mod: 7
-val_check_interval: 18000
+train_data_skip_mod: 1
+valid_data_skip_mod: 14
+val_check_interval: 9000
 max_epochs: 1
 
 
@@ -21,7 +21,7 @@ scheduler:
   use_one_epoch_warmup: True
 optimizer: 
   name: Adan
-  lr: 1e-4
+  lr: 2e-4
 
 
 
