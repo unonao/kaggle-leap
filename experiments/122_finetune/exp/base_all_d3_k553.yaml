@@ -12,7 +12,7 @@ valid_end: [8, 1]
 
 train_data_skip_mod: 2
 valid_data_skip_mod: 7
-val_check_interval: 36000
+val_check_interval: 18000
 max_epochs: 1
 
 
