@@ -996,17 +996,28 @@ class Height60Conv(MessagePassing):
     viewやflattenを使って整えてからkernel size 1 の1dCNNで高さを保ったまま処理
     """
 
-    def __init__(self, base_channels, edge_channels, kernel_size=1, bias=False):
+    def __init__(self, base_channels, edge_channels, kernel_sizes=[1], bias=False):
         super().__init__(aggr="add")
         self.edge_channels = edge_channels
         self.base_channels = base_channels
-        self.adjacency_conv = nn.Conv1d(
-            base_channels + edge_channels,
-            base_channels,
-            kernel_size=kernel_size,
-            padding="same",
-            bias=bias,
-        )
+        self.edge_linear = nn.Linear(edge_channels, base_channels)
+
+        input_channels = base_channels + base_channels
+        adjacency_conv_list = []
+        for kernel_size in kernel_sizes:
+            adjacency_conv_list.append(
+                nn.Conv1d(
+                    input_channels,
+                    base_channels,
+                    kernel_size=kernel_size,
+                    padding="same",
+                    bias=bias,
+                )
+            )
+            adjacency_conv_list.append(nn.ReLU())
+            input_channels = base_channels
+
+        self.adjacency_conv = nn.Sequential(*adjacency_conv_list)
 
     def forward(self, x, edge_attr, edge_index):
         """
@@ -1024,6 +1035,7 @@ class Height60Conv(MessagePassing):
         edge_attr: (len(edge), edge_channels)
         """
         h = x_j.view(-1, self.base_channels, 60)
+        edge_attr = self.edge_linear(edge_attr)  # (len(edge), base_channels)
         h = torch.concat([h, edge_attr.unsqueeze(-1).repeat(1, 1, 60)], dim=-2)
         h = self.adjacency_conv(h)
         h = h.flatten(start_dim=-2, end_dim=-1)
@@ -1036,7 +1048,7 @@ class GNN(nn.Module):
         base_channels,
         n_layers=4,
         activation="relu",
-        kernel_size=1,
+        kernel_sizes=[1],
         bias=False,
         self_loop=True,
         spectral_connection=True,
@@ -1053,7 +1065,7 @@ class GNN(nn.Module):
         edge_channels = self.edge_attr.shape[-1]
         self.conv = nn.ModuleList(
             [
-                Height60Conv(base_channels, edge_channels, kernel_size, bias=bias)
+                Height60Conv(base_channels, edge_channels, kernel_sizes, bias=bias)
                 for _ in range(n_layers)
             ]
         )
@@ -1111,7 +1123,8 @@ class LeapModel(nn.Module):
         dropout=0.2,
         n_base_channels=32,
         gnn_n_layers=4,
-        gnn_kernel_size=1,
+        gnn_kernel_sizes1=[1],
+        gnn_kernel_sizes2=[1],
         gnn_bias=False,
         self_loop=True,
         spectral_connection=True,
@@ -1145,7 +1158,7 @@ class LeapModel(nn.Module):
             spectral_connection=spectral_connection,
             self_loop=self_loop,
             is_same_spectral=is_same_spectral,
-            kernel_size=gnn_kernel_size,
+            kernel_sizes=gnn_kernel_sizes1,
             bias=gnn_bias,
         )
         self.unet = UNet(
@@ -1164,7 +1177,7 @@ class LeapModel(nn.Module):
             self_loop=self_loop,
             spectral_connection=spectral_connection,
             is_same_spectral=is_same_spectral,
-            kernel_size=gnn_kernel_size,
+            kernel_sizes=gnn_kernel_sizes2,
             bias=gnn_bias,
         )
 

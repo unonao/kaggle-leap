@@ -1000,8 +1000,9 @@ class Height60Conv(MessagePassing):
         super().__init__(aggr="add")
         self.edge_channels = edge_channels
         self.base_channels = base_channels
+        self.edge_linear = nn.Linear(edge_channels, base_channels)
         self.adjacency_conv = nn.Conv1d(
-            base_channels + edge_channels,
+            base_channels + base_channels,
             base_channels,
             kernel_size=kernel_size,
             padding="same",
@@ -1024,6 +1025,7 @@ class Height60Conv(MessagePassing):
         edge_attr: (len(edge), edge_channels)
         """
         h = x_j.view(-1, self.base_channels, 60)
+        edge_attr = self.edge_linear(edge_attr)  # (len(edge), base_channels)
         h = torch.concat([h, edge_attr.unsqueeze(-1).repeat(1, 1, 60)], dim=-2)
         h = self.adjacency_conv(h)
         h = h.flatten(start_dim=-2, end_dim=-1)

@@ -990,21 +990,55 @@ class MLP(nn.Module):
         return self.mlp(x)
 
 
+class MultiConv1d(nn.Module):
+    def __init__(
+        self,
+        in_channels,
+        base_channels,
+        kernel_sizes,
+        bias=True,
+        activation=nn.ReLU,
+    ):
+        super(MultiConv1d, self).__init__()
+        self.layers = nn.ModuleList()
+        current_channels = in_channels
+
+        for kernel_size in kernel_sizes:
+            conv = nn.Conv1d(
+                in_channels=current_channels,
+                out_channels=base_channels,
+                kernel_size=kernel_size,
+                padding="same",
+                bias=bias,
+            )
+            norm = nn.BatchNorm1d(base_channels)
+            act = activation()
+            self.layers.append(nn.Sequential(conv, norm, act))
+            current_channels = base_channels
+
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+
 class Height60Conv(MessagePassing):
     """
     高さを表す次元は結合した状態じゃないとうまく動かない
     viewやflattenを使って整えてからkernel size 1 の1dCNNで高さを保ったまま処理
     """
 
-    def __init__(self, base_channels, edge_channels, kernel_size=1, bias=False):
+    def __init__(
+        self, base_channels, edge_channels, edge_dim, kernel_sizes=[1], bias=False
+    ):
         super().__init__(aggr="add")
         self.edge_channels = edge_channels
         self.base_channels = base_channels
-        self.adjacency_conv = nn.Conv1d(
+        # self.edge_linear = nn.Linear(edge_channels, edge_dim)
+        self.adjacency_conv = MultiConv1d(
             base_channels + edge_channels,
             base_channels,
-            kernel_size=kernel_size,
-            padding="same",
+            kernel_sizes=kernel_sizes,
             bias=bias,
         )
 
@@ -1034,9 +1068,9 @@ class GNN(nn.Module):
     def __init__(
         self,
         base_channels,
+        edge_dim,
         n_layers=4,
-        activation="relu",
-        kernel_size=1,
+        kernel_sizes=[1],
         bias=False,
         self_loop=True,
         spectral_connection=True,
@@ -1048,31 +1082,16 @@ class GNN(nn.Module):
         )
         self.edge_attr = create_edge_attr(self.edge_index, is_same_spectral).float()
         self.base_channels = base_channels
-        self.activation = activation
 
         edge_channels = self.edge_attr.shape[-1]
         self.conv = nn.ModuleList(
             [
-                Height60Conv(base_channels, edge_channels, kernel_size, bias=bias)
+                Height60Conv(
+                    base_channels, edge_channels, edge_dim, kernel_sizes, bias=bias
+                )
                 for _ in range(n_layers)
             ]
         )
-        self.norms = nn.ModuleList(
-            [nn.LayerNorm(base_channels * 60) for _ in range(n_layers)]
-        )
-        self.activations = nn.ModuleList(
-            [self.get_activation(activation) for _ in range(n_layers)]
-        )
-
-    def get_activation(self, activation):
-        if activation == "relu":
-            return nn.ReLU()
-        elif activation == "sigmoid":
-            return nn.Sigmoid()
-        elif activation == "tanh":
-            return nn.Tanh()
-        else:
-            raise ValueError(f"Unsupported activation function: {activation}")
 
     def forward(self, x):
         """
@@ -1087,10 +1106,8 @@ class GNN(nn.Module):
 
         # 一旦高さ次元をまとめて処理。conv内で分けて処理される
         x = x.flatten(start_dim=-2, end_dim=-1)
-        for conv, norm, activation in zip(self.conv, self.norms, self.activations):
-            x = conv(x, edge_attr, edge_index)  # Conv1d適用
-            x = norm(x)
-            x = activation(x)
+        for conv in self.conv:
+            x = conv(x, edge_attr, edge_index)
         x = x.view(
             -1, self.base_channels, 60
         )  # (384, n_base_channels*60) -> (384, n_base_channels, 60)
@@ -1111,7 +1128,8 @@ class LeapModel(nn.Module):
         dropout=0.2,
         n_base_channels=32,
         gnn_n_layers=4,
-        gnn_kernel_size=1,
+        gnn_edge_dim=16,
+        gnn_kernel_sizes=[1],
         gnn_bias=False,
         self_loop=True,
         spectral_connection=True,
@@ -1141,11 +1159,12 @@ class LeapModel(nn.Module):
 
         self.gnn1 = GNN(
             base_channels=same_height_hidden_sizes[-1],
+            edge_dim=gnn_edge_dim,
             n_layers=gnn_n_layers,
             spectral_connection=spectral_connection,
             self_loop=self_loop,
             is_same_spectral=is_same_spectral,
-            kernel_size=gnn_kernel_size,
+            kernel_sizes=gnn_kernel_sizes,
             bias=gnn_bias,
         )
         self.unet = UNet(
@@ -1160,11 +1179,12 @@ class LeapModel(nn.Module):
 
         self.gnn2 = GNN(
             base_channels=n_base_channels,
+            edge_dim=gnn_edge_dim,
             n_layers=gnn_n_layers,
             self_loop=self_loop,
             spectral_connection=spectral_connection,
             is_same_spectral=is_same_spectral,
-            kernel_size=gnn_kernel_size,
+            kernel_sizes=gnn_kernel_sizes,
             bias=gnn_bias,
         )
 
