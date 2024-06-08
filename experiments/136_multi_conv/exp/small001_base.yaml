@@ -1,0 +1,19 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+
+train_data_skip_mod: 70
+valid_data_skip_mod: 14
+additional_data_skip_mod: 70
+max_epochs: 14
+
+
+# model
+model:
+  gnn_n_layers: 1
+  gnn_kernel_sizes1: [1]
+  gnn_kernel_sizes2: [1]
+  gnn_bias: True  
+  spectral_connection: False
+  is_same_spectral: False
+  self_loop: True
