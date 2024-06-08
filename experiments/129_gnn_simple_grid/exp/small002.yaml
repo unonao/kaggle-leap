@@ -12,4 +12,4 @@ max_epochs: 7
 model:
   gnn_n_layers: 2
   spectral_connection: True
-  is_same_spectral: True
+  is_same_spectral: False

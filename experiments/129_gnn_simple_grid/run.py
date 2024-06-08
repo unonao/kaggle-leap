@@ -145,7 +145,7 @@ def get_boundary_neighbors(faces):
     return boundary_neighbors
 
 
-def create_adjacency_matrix(self_loop=True):
+def create_adjacency_matrix(self_loop=True, spectral_connection=True):
     # 隣接行列の作成
     N = 384
     adjacency_matrix = np.zeros((N, N), dtype=int)
@@ -176,6 +176,14 @@ def create_adjacency_matrix(self_loop=True):
     assert adjacency_matrix[141, 192] == 1
     assert adjacency_matrix.sum() == 384 * 4
 
+    # 4つずつのまとまりについては spectral element 内で結合しているとみなす
+    if spectral_connection:
+        for i in range(384):
+            for j in range(i + 1, 384):
+                if i // 4 == j // 4:
+                    adjacency_matrix[i, j] = 1
+                    adjacency_matrix[j, i] = 1
+
     for i in range(384):
         if self_loop:
             adjacency_matrix[i][i] = 1
@@ -185,14 +193,14 @@ def create_adjacency_matrix(self_loop=True):
     return adjacency_matrix
 
 
-def create_edge_index(self_loop=True):
-    adjacency_matrix = create_adjacency_matrix(self_loop)
+def create_edge_index(self_loop=True, spectral_connection=True):
+    adjacency_matrix = create_adjacency_matrix(self_loop, spectral_connection)
     edge_index = np.array(np.nonzero(adjacency_matrix))
     edge_index = torch.tensor(edge_index, dtype=torch.long)
     return edge_index
 
 
-def create_edge_attr(edge_index) -> torch.tensor:
+def create_edge_attr(edge_index, is_same_spectral=True) -> torch.tensor:
     """
     output: (len(edge), 4)
     lat,lonの差をsin,cosで表現して入力
@@ -211,8 +219,10 @@ def create_edge_attr(edge_index) -> torch.tensor:
     lat_diff_cos = torch.tensor(np.cos(lat_diff))
     lon_diff_sin = torch.tensor(np.sin(lon_diff))
     lon_diff_cos = torch.tensor(np.cos(lon_diff))
+    is_same_spectral = edge_index[0, :] // 4 == edge_index[1, :] // 4
     edge_attr = torch.stack(
-        [lat_diff_sin, lat_diff_cos, lon_diff_sin, lon_diff_cos], dim=1
+        [lat_diff_sin, lat_diff_cos, lon_diff_sin, lon_diff_cos, is_same_spectral],
+        dim=1,
     )
     return edge_attr
 
@@ -1020,10 +1030,19 @@ class Height60Conv(MessagePassing):
 
 
 class GNN(nn.Module):
-    def __init__(self, base_channels, n_layers=4, activation="relu"):
+    def __init__(
+        self,
+        base_channels,
+        n_layers=4,
+        activation="relu",
+        spectral_connection=True,
+        is_same_spectral=True,
+    ):
         super().__init__()
-        self.edge_index = create_edge_index(self_loop=True)
-        self.edge_attr = create_edge_attr(self.edge_index).float()
+        self.edge_index = create_edge_index(
+            self_loop=True, spectral_connection=spectral_connection
+        )
+        self.edge_attr = create_edge_attr(self.edge_index, is_same_spectral).float()
         self.base_channels = base_channels
         self.activation = activation
 
@@ -1085,6 +1104,8 @@ class LeapModel(nn.Module):
         dropout=0.2,
         n_base_channels=32,
         gnn_n_layers=4,
+        spectral_connection=True,
+        is_same_spectral=True,
         seq_feats=[],
         scalar_feats=[],
     ):
@@ -1103,7 +1124,7 @@ class LeapModel(nn.Module):
         previous_size = 9 + 16 + embedding_dim  # 9: sequence, 16: scalar
         previous_size += len(seq_feats)
         previous_size += len(scalar_feats)
-        previous_size += categorical_embedding_dim
+        previous_size += 2 * categorical_embedding_dim
         self.same_height_encoder = MLP(
             previous_size, same_height_hidden_sizes, use_layer_norm=use_input_layer_norm
         )
@@ -1121,6 +1142,8 @@ class LeapModel(nn.Module):
         self.gnn = GNN(
             base_channels=n_base_channels,
             n_layers=gnn_n_layers,
+            spectral_connection=spectral_connection,
+            is_same_spectral=is_same_spectral,
         )
 
         self.t_head = MLP(
@@ -1235,6 +1258,7 @@ class LeapModel(nn.Module):
         """
         x = self.gnn(x)
 
+        x = x.transpose(-1, -2)  # ->(batch*384, 60, n_base_channels)
         """
        43. 各地域ごとに出力を作成
         """
