@@ -10,7 +10,7 @@ max_epochs: 7
 
 # model
 model:
-  gnn_n_layers: 2
+  gnn_n_layers: 1
   gnn_kernel_sizes1: [1]
   gnn_kernel_sizes2: [3, 3]
   gnn_bias: True  
