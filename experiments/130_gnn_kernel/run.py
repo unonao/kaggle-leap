@@ -1026,16 +1026,16 @@ class Height60Conv(MessagePassing):
     viewやflattenを使って整えてからkernel size 1 の1dCNNで高さを保ったまま処理
     """
 
-    def __init__(self, base_channels, edge_channels):
+    def __init__(self, base_channels, edge_channels, kernel_size=1, bias=False):
         super().__init__(aggr="add")
         self.edge_channels = edge_channels
         self.base_channels = base_channels
         self.adjacency_conv = nn.Conv1d(
             base_channels + edge_channels,
             base_channels,
-            kernel_size=1,
+            kernel_size=kernel_size,
             padding="same",
-            bias=False,
+            bias=bias,
         )
 
     def forward(self, x, edge_attr, edge_index):
@@ -1066,12 +1066,15 @@ class GNN(nn.Module):
         base_channels,
         n_layers=4,
         activation="relu",
+        kernel_size=1,
+        bias=False,
+        self_loop=True,
         spectral_connection=True,
         is_same_spectral=True,
     ):
         super().__init__()
         self.edge_index = create_edge_index(
-            self_loop=True, spectral_connection=spectral_connection
+            self_loop=self_loop, spectral_connection=spectral_connection
         )
         self.edge_attr = create_edge_attr(self.edge_index, is_same_spectral).float()
         self.base_channels = base_channels
@@ -1079,7 +1082,10 @@ class GNN(nn.Module):
 
         edge_channels = self.edge_attr.shape[-1]
         self.conv = nn.ModuleList(
-            [Height60Conv(base_channels, edge_channels) for _ in range(n_layers)]
+            [
+                Height60Conv(base_channels, edge_channels, kernel_size, bias=bias)
+                for _ in range(n_layers)
+            ]
         )
         self.norms = nn.ModuleList(
             [nn.LayerNorm(base_channels * 60) for _ in range(n_layers)]
@@ -1135,6 +1141,9 @@ class LeapModel(nn.Module):
         dropout=0.2,
         n_base_channels=32,
         gnn_n_layers=4,
+        gnn_kernel_size=1,
+        gnn_bias=False,
+        self_loop=True,
         spectral_connection=True,
         is_same_spectral=True,
         seq_feats=[],
@@ -1160,8 +1169,17 @@ class LeapModel(nn.Module):
             previous_size, same_height_hidden_sizes, use_layer_norm=use_input_layer_norm
         )
 
+        self.gnn1 = GNN(
+            base_channels=same_height_hidden_sizes[-1],
+            n_layers=gnn_n_layers,
+            spectral_connection=spectral_connection,
+            self_loop=self_loop,
+            is_same_spectral=is_same_spectral,
+            kernel_size=gnn_kernel_size,
+            bias=gnn_bias,
+        )
         self.unet = UNet(
-            n_channels=same_height_hidden_sizes[-1],
+            n_channels=2 * same_height_hidden_sizes[-1],
             n_classes=n_base_channels,
             bottleneck_out_nums=8,
             depth=depth,
@@ -1170,32 +1188,35 @@ class LeapModel(nn.Module):
             use_batch_norm=use_batch_norm,
         )
 
-        self.gnn = GNN(
+        self.gnn2 = GNN(
             base_channels=n_base_channels,
             n_layers=gnn_n_layers,
+            self_loop=self_loop,
             spectral_connection=spectral_connection,
             is_same_spectral=is_same_spectral,
+            kernel_size=gnn_kernel_size,
+            bias=gnn_bias,
         )
 
         self.t_head = MLP(
-            9 + n_base_channels,
+            9 + 2 * n_base_channels,
             output_hidden_sizes + [2],
             use_layer_norm=use_output_layer_norm,
         )
         self.q1_head = MLP(
-            5 + n_base_channels,
+            5 + 2 * n_base_channels,
             output_hidden_sizes + [2],
             use_layer_norm=use_output_layer_norm,
         )
         self.cloud_water_head = MLP(
-            6 + n_base_channels,
+            6 + 2 * n_base_channels,
             output_hidden_sizes + [4],
             use_layer_norm=use_output_layer_norm,
         )
         self.wind_head = nn.ModuleList(
             [
                 MLP(
-                    8 + n_base_channels,
+                    8 + 2 * n_base_channels,
                     output_hidden_sizes + [2],
                     use_layer_norm=use_output_layer_norm,
                 )
@@ -1275,23 +1296,30 @@ class LeapModel(nn.Module):
 
         # (batch*384, 60, dim) -> (batch*384, 60, same_height_hidden_sizes[-1])
         x = self.same_height_encoder(x)
+        x = x.transpose(-1, -2)  # ->(batch*384, same_height_hidden_sizes[-1], 60)
+
+        """
+        batch = 1 を仮定しているので注意
+        """
+        x_out = self.gnn1(x)
+        x = torch.cat([x, x_out], dim=1)
 
         """
         2. unet
         """
-        x = x.transpose(-1, -2).unsqueeze(-1)
+        x = x.unsqueeze(-1)
         x, class_logits = self.unet(x)
         x = x.squeeze(-1)  # ->(batch*384, n_base_channels, 60)
 
         """
-        3. gnn
         batch = 1 を仮定しているので注意
         """
-        x = self.gnn(x)
+        x_out = self.gnn2(x)
+        x = torch.cat([x, x_out], dim=1)
 
         x = x.transpose(-1, -2)  # ->(batch*384, 60, n_base_channels)
         """
-       43. 各地域ごとに出力を作成
+        3. 各地域ごとに出力を作成
         """
         out_t = self.t_head(
             torch.cat(
