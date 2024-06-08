@@ -40,11 +40,8 @@ from pytorch_lightning.callbacks import (
 from pytorch_lightning.loggers import WandbLogger
 from sklearn.metrics import r2_score
 from timm.utils import ModelEmaV2
-from torch import nn
-from torch.nn import Linear, Parameter
 from torch.utils.data import DataLoader, Dataset
 from torch_geometric.nn import MessagePassing
-from torch_geometric.utils import add_self_loops, degree
 from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
 
