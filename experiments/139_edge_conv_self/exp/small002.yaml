@@ -17,4 +17,4 @@ model:
   gnn_bias: True  
   spectral_connection: False
   is_same_spectral: False
-  self_loop: False
+  self_loop: True
