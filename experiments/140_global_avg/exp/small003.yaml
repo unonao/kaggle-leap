@@ -5,7 +5,7 @@ defaults:
 # model
 model:
   gnn_n_layers1: 2
-  gnn_n_layers2: 2
+  gnn_n_layers2: 3
   gnn_kernel_sizes1: [1,1]
   gnn_kernel_sizes2: [1,1]
   gnn_bias: True  
