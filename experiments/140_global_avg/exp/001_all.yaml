@@ -22,10 +22,3 @@ additional_data_skip_mod: 1
 val_check_interval: 36000
 max_epochs: 4
 
-
-
-# model
-model:
-  power: 2.0
-  top_k: 4
-  use_self: False
