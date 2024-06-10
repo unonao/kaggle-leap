@@ -5,7 +5,7 @@ scheduler:
   name: CyclicLR
   base_lr: 1e-6
   max_lr: 2e-2
-  num_cycles: 4
+  num_cycles: 3
 
 optimizer: 
   name: Adan
@@ -15,7 +15,7 @@ train_data_skip_mod: 1
 valid_data_skip_mod: 14
 additional_data_skip_mod: 1
 val_check_interval: 9000
-max_epochs: 1
+max_epochs: 2
 
 
 # model
