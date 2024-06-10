@@ -68,7 +68,7 @@ def create_board(base=0):
     return np.fliplr(np.rot90(board, k=2)) + (base * 64)
 
 
-def get_neighbors(face, i, j):
+def get_neighbors(face, i, j, diag_edge):
     neighbors = []
     if i > 0:
         neighbors.append(face[i - 1, j])
@@ -78,10 +78,21 @@ def get_neighbors(face, i, j):
         neighbors.append(face[i, j - 1])
     if j < 7:
         neighbors.append(face[i, j + 1])
+    # 斜め
+    if diag_edge:
+        if i > 0 and j > 0:
+            neighbors.append(face[i - 1, j - 1])
+        if i > 0 and j < 7:
+            neighbors.append(face[i - 1, j + 1])
+        if i < 7 and j > 0:
+            neighbors.append(face[i + 1, j - 1])
+        if i < 7 and j < 7:
+            neighbors.append(face[i + 1, j + 1])
+
     return neighbors
 
 
-def get_boundary_neighbors(faces):
+def get_boundary_neighbors(faces, diag_edge):
     boundary_neighbors = {i: [] for i in range(384)}
 
     # 境界の接続を定義（面1、エッジ1、面2、エッジ2、順序）
@@ -135,12 +146,29 @@ def get_boundary_neighbors(faces):
             coord2 = get_edge_coord(i, edge2, order == "reverse")
             boundary_neighbors[faces[face1][coord1]].append(faces[face2][coord2])
             boundary_neighbors[faces[face2][coord2]].append(faces[face1][coord1])
+            if diag_edge:
+                if i >= 1:
+                    coord2 = get_edge_coord(i - 1, edge2, order == "reverse")
+                    boundary_neighbors[faces[face1][coord1]].append(
+                        faces[face2][coord2]
+                    )
+                    boundary_neighbors[faces[face2][coord2]].append(
+                        faces[face1][coord1]
+                    )
+                if i <= 6:
+                    coord2 = get_edge_coord(i + 1, edge2, order == "reverse")
+                    boundary_neighbors[faces[face1][coord1]].append(
+                        faces[face2][coord2]
+                    )
+                    boundary_neighbors[faces[face2][coord2]].append(
+                        faces[face1][coord1]
+                    )
 
     return boundary_neighbors
 
 
 def create_adjacency_matrix(
-    self_loop=True, use_boundary=True, spectral_connection=True
+    self_loop=True, use_boundary=True, spectral_connection=True, diag_edge=False
 ):
     # 隣接行列の作成
     N = 384
@@ -154,14 +182,14 @@ def create_adjacency_matrix(
         for i in range(8):
             for j in range(8):
                 idx = face[i, j]
-                neighbors = get_neighbors(face, i, j)
+                neighbors = get_neighbors(face, i, j, diag_edge=diag_edge)
                 for neighbor in neighbors:
                     adjacency_matrix[idx, neighbor] = 1
                     adjacency_matrix[neighbor, idx] = 1
 
     # 境界の隣接を追加
     if use_boundary:
-        boundary_neighbors = get_boundary_neighbors(faces)
+        boundary_neighbors = get_boundary_neighbors(faces, diag_edge)
         for idx, neighbors in boundary_neighbors.items():
             for neighbor in neighbors:
                 adjacency_matrix[idx, neighbor] = 1
@@ -197,9 +225,11 @@ def create_adjacency_matrix(
     return adjacency_matrix
 
 
-def create_edge_index(self_loop=True, use_boundary=True, spectral_connection=True):
+def create_edge_index(
+    self_loop=True, use_boundary=True, spectral_connection=True, diag_edge=False
+):
     adjacency_matrix = create_adjacency_matrix(
-        self_loop, use_boundary, spectral_connection
+        self_loop, use_boundary, spectral_connection, diag_edge=diag_edge
     )
     edge_index = np.array(np.nonzero(adjacency_matrix))
     edge_index = torch.tensor(edge_index, dtype=torch.long)
@@ -1078,6 +1108,7 @@ class GNN(nn.Module):
         bias=False,
         self_loop=True,
         use_boundary=True,
+        diag_edge=False,
         spectral_connection=True,
         is_same_spectral=True,
     ):
@@ -1086,6 +1117,7 @@ class GNN(nn.Module):
             self_loop=self_loop,
             use_boundary=use_boundary,
             spectral_connection=spectral_connection,
+            diag_edge=diag_edge,
         )
         self.edge_attr = create_edge_attr(self.edge_index, is_same_spectral).float()
         self.base_channels = base_channels
@@ -1150,6 +1182,7 @@ class LeapModel(nn.Module):
         gnn_bias=False,
         self_loop=True,
         use_boundary=True,
+        diag_edge=False,
         spectral_connection=True,
         is_same_spectral=True,
         seq_feats=[],
@@ -1179,6 +1212,7 @@ class LeapModel(nn.Module):
             base_channels=same_height_hidden_sizes[-1],
             n_layers=gnn_n_layers1,
             use_boundary=use_boundary,
+            diag_edge=diag_edge,
             spectral_connection=spectral_connection,
             self_loop=self_loop,
             is_same_spectral=is_same_spectral,
@@ -1199,6 +1233,7 @@ class LeapModel(nn.Module):
             base_channels=n_base_channels,
             n_layers=gnn_n_layers2,
             use_boundary=use_boundary,
+            diag_edge=diag_edge,
             self_loop=self_loop,
             spectral_connection=spectral_connection,
             is_same_spectral=is_same_spectral,
