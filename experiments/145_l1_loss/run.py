@@ -502,11 +502,6 @@ class Scaler:
             filter_bool = np.all(self.y_min_max - diff <= y, axis=1) & np.all(
                 y <= self.y_max_min + diff, axis=1
             )
-            if filter_bool.sum() < y.shape[0]:
-                print(
-                    f"filter {y.shape[0] - filter_bool.sum()} samples",
-                    f"{filter_bool.sum()=}",
-                )
         else:
             filter_bool = np.all(
                 y <= 1e60, axis=1
@@ -1022,11 +1017,9 @@ class Height60Conv(MessagePassing):
         super().__init__(aggr="add")
         self.edge_channels = edge_channels
         self.base_channels = base_channels
+        self.edge_linear = nn.Linear(edge_channels, base_channels)
 
-        edge_dim = base_channels // 4
-        self.edge_linear = nn.Linear(edge_channels, edge_dim)
-
-        input_channels = 2 * base_channels + edge_dim
+        input_channels = 3 * base_channels
         adjacency_conv_list = []
         for kernel_size in kernel_sizes:
             adjacency_conv_list.append(
@@ -1438,7 +1431,11 @@ class LeapLightningModule(LightningModule):
             scalar_feats=cfg.exp.scalar_feats,
         )
         self.scaler = Scaler(cfg)
-        self.loss_fc = nn.MSELoss()  # Using MSE for regression
+        self.loss_fc = None
+        if cfg.exp.loss.name == "L1Loss":
+            self.loss_fc = nn.L1Loss()
+        elif cfg.exp.loss.name == "MSELoss":
+            self.loss_fc = nn.MSELoss()
         self.model_ema = None
         if self.cfg.exp.ema.use_ema:
             print("Using EMA")

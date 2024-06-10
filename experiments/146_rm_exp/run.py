@@ -502,11 +502,6 @@ class Scaler:
             filter_bool = np.all(self.y_min_max - diff <= y, axis=1) & np.all(
                 y <= self.y_max_min + diff, axis=1
             )
-            if filter_bool.sum() < y.shape[0]:
-                print(
-                    f"filter {y.shape[0] - filter_bool.sum()} samples",
-                    f"{filter_bool.sum()=}",
-                )
         else:
             filter_bool = np.all(
                 y <= 1e60, axis=1
@@ -1022,11 +1017,9 @@ class Height60Conv(MessagePassing):
         super().__init__(aggr="add")
         self.edge_channels = edge_channels
         self.base_channels = base_channels
+        self.edge_linear = nn.Linear(edge_channels, base_channels)
 
-        edge_dim = base_channels // 4
-        self.edge_linear = nn.Linear(edge_channels, edge_dim)
-
-        input_channels = 2 * base_channels + edge_dim
+        input_channels = 3 * base_channels
         adjacency_conv_list = []
         for kernel_size in kernel_sizes:
             adjacency_conv_list.append(
@@ -1203,30 +1196,10 @@ class LeapModel(nn.Module):
         )
 
         out_base_channels = 2 * n_base_channels
-        self.t_head = MLP(
-            9 + out_base_channels,
-            output_hidden_sizes + [2],
+        self.head = MLP(
+            out_base_channels,
+            output_hidden_sizes + [6],
             use_layer_norm=use_output_layer_norm,
-        )
-        self.q1_head = MLP(
-            5 + out_base_channels,
-            output_hidden_sizes + [2],
-            use_layer_norm=use_output_layer_norm,
-        )
-        self.cloud_water_head = MLP(
-            6 + out_base_channels,
-            output_hidden_sizes + [4],
-            use_layer_norm=use_output_layer_norm,
-        )
-        self.wind_head = nn.ModuleList(
-            [
-                MLP(
-                    8 + out_base_channels,
-                    output_hidden_sizes + [2],
-                    use_layer_norm=use_output_layer_norm,
-                )
-                for _ in range(2)
-            ]
         )
 
     def forward(self, x, x_cat):
@@ -1326,99 +1299,11 @@ class LeapModel(nn.Module):
         """
         x_out = self.gnn2(x)
         x = torch.cat([x, x_out], dim=1)
-
         x = x.transpose(-1, -2)  # ->(batch*384, 60, n_base_channels)
         """
-        3. 各地域ごとに出力を作成
+        3. 出力を作成
         """
-        out_t = self.t_head(
-            torch.cat(
-                [
-                    x_state_t,
-                    relative_humidity_all,
-                    x_state_q0001,
-                    x_state_q0002,
-                    x_state_q0003,
-                    x_cloud_water,
-                    x_cloud_snow_rate_array,
-                    x_state_u,
-                    x_state_v,
-                    x,
-                ],
-                dim=2,
-            )
-        )  # -> (batch, 60, 1)
-        out_t = out_t[:, :, 0:1].exp() - out_t[:, :, 1:2].exp()
-
-        out_q1 = self.q1_head(
-            torch.cat(
-                [
-                    x_state_t,
-                    out_t,
-                    relative_humidity_all,
-                    x_state_q0001,
-                    x_cloud_water,
-                    x,
-                ],
-                dim=2,
-            )
-        )
-        out_q1 = out_q1[:, :, 0:1].exp() - out_q1[:, :, 1:2].exp()
-
-        out_cw = self.cloud_water_head(
-            torch.cat(
-                [
-                    x_state_t,
-                    out_t,
-                    relative_humidity_all,
-                    x_state_q0001,
-                    x_cloud_water,
-                    x_cloud_snow_rate_array,
-                    x,
-                ],
-                dim=2,
-            )
-        )
-        out_q2 = out_cw[:, :, 0:1].exp() - out_cw[:, :, 1:2].exp()
-        out_q3 = out_cw[:, :, 2:3].exp() - out_cw[:, :, 3:4].exp()
-
-        out_u = self.wind_head[0](
-            torch.cat(
-                [
-                    x_state_t,
-                    out_t,
-                    x_state_q0001,
-                    x_state_q0002,
-                    x_state_q0003,
-                    x_cloud_water,
-                    x_cloud_snow_rate_array,
-                    x_state_u,
-                    x,
-                ],
-                dim=2,
-            )
-        )
-        out_u = out_u[:, :, 0:1].exp() - out_u[:, :, 1:2].exp()
-
-        out_v = self.wind_head[1](
-            torch.cat(
-                [
-                    x_state_t,
-                    out_t,
-                    x_state_q0001,
-                    x_state_q0002,
-                    x_state_q0003,
-                    x_cloud_water,
-                    x_cloud_snow_rate_array,
-                    x_state_v,
-                    x,
-                ],
-                dim=2,
-            )
-        )
-        out_v = out_v[:, :, 0:1].exp() - out_v[:, :, 1:2].exp()
-
-        out = torch.cat([out_t, out_q1, out_q2, out_q3, out_u, out_v], dim=2)
+        out = self.head(x)
         out = out.transpose(-1, -2)
         out = out.flatten(start_dim=1)
         out = torch.cat([out, class_logits], dim=1)
@@ -1438,7 +1323,11 @@ class LeapLightningModule(LightningModule):
             scalar_feats=cfg.exp.scalar_feats,
         )
         self.scaler = Scaler(cfg)
-        self.loss_fc = nn.MSELoss()  # Using MSE for regression
+        self.loss_fc = None
+        if cfg.exp.loss.name == "L1Loss":
+            self.loss_fc = nn.L1Loss()
+        elif cfg.exp.loss.name == "MSELoss":
+            self.loss_fc = nn.MSELoss()
         self.model_ema = None
         if self.cfg.exp.ema.use_ema:
             print("Using EMA")

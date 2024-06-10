@@ -1,15 +1,13 @@
 defaults:
   - base@_here_ # ベースの設定ファイルを指定する
 
-bound_diff_rate: 1 # 最小最大の差を用いて、その何倍分までの外れ値を許容するか。nullなら使わない
-
 # model
 model:
-  gnn_n_layers1: 3
-  gnn_n_layers2: 3
+  gnn_n_layers1: 1
+  gnn_n_layers2: 1
   gnn_kernel_sizes1: [1,1]
   gnn_kernel_sizes2: [1,1]
   gnn_bias: True  
   spectral_connection: False
   is_same_spectral: False
-  self_loop: False
+  self_loop: True
