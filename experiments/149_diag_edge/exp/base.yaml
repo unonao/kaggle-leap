@@ -94,7 +94,7 @@ norm_seq: False
 
 # Training
 max_epochs: 14
-early_stopping_patience: 3
+early_stopping_patience: 10
 num_workers: 8
 train_batch_size: 1
 valid_batch_size: 1

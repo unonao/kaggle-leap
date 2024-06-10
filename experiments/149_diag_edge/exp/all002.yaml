@@ -15,7 +15,7 @@ train_data_skip_mod: 1
 valid_data_skip_mod: 14
 additional_data_skip_mod: 1
 val_check_interval: 9000
-max_epochs: 2
+max_epochs: 1
 
 
 # model
