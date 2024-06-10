@@ -4,7 +4,7 @@ defaults:
 
 optimizer: 
   name: Adan
-  lr: 5e-3
+  lr: 2e-2
 
 # model
 model:
