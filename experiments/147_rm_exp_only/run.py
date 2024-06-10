@@ -1556,6 +1556,20 @@ class LeapLightningModule(LightningModule):
         self.valid_original_xs = []
         gc.collect()
 
+    # Learning rate warm-up
+    def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
+        # manually warm up lr without a scheduler
+        if (
+            self.cfg.exp.scheduler.name == "ReduceLROnPlateau"
+            and self.trainer.global_step < 5000
+        ):
+            lr_scale = min(1.0, float(self.trainer.global_step + 1) / 5000.0)
+            for pg in optimizer.param_groups:
+                pg["lr"] = lr_scale * self.cfg.exp.optimizer.lr
+
+        # update params
+        optimizer.step(closure=optimizer_closure)
+
     def configure_optimizers(self):
         optimizer = None
         if self.cfg.exp.optimizer.name == "AdamW":
@@ -1581,7 +1595,7 @@ class LeapLightningModule(LightningModule):
                 no_prox=self.cfg.exp.optimizer.no_prox,
             )
 
-        if self.cfg.exp.scheduler.name == "CosineAnnealingWarmRestarts":
+        if self.cfg.exp.scheduler.name == "ReduceLROnPlateau":
             # 1epoch分をwarmupとするための記述
             num_warmup_steps = (
                 math.ceil(self.trainer.max_steps / self.cfg.exp.max_epochs) * 1

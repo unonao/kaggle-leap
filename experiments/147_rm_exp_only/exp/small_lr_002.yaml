@@ -4,12 +4,21 @@ defaults:
 
 optimizer: 
   name: Adan
+<<<<<<< HEAD
   lr: 2e-2
 
 # model
 model:
   gnn_n_layers1: 3
   gnn_n_layers2: 3
+=======
+  lr: 4e-2
+
+# model
+model:
+  gnn_n_layers1: 1
+  gnn_n_layers2: 1
+>>>>>>> a7208418c63ca50880d7fa286367f581033f568e
   gnn_kernel_sizes1: [1,1]
   gnn_kernel_sizes2: [1,1]
   gnn_bias: True  
