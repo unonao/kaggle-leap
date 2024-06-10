@@ -1595,7 +1595,7 @@ class LeapLightningModule(LightningModule):
                 no_prox=self.cfg.exp.optimizer.no_prox,
             )
 
-        if self.cfg.exp.scheduler.name == "ReduceLROnPlateau":
+        if self.cfg.exp.scheduler.name == "CosineAnnealingWarmRestarts":
             # 1epoch分をwarmupとするための記述
             num_warmup_steps = (
                 math.ceil(self.trainer.max_steps / self.cfg.exp.max_epochs) * 1

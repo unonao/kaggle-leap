@@ -121,7 +121,7 @@ scheduler:
   use_one_epoch_warmup: True
 optimizer: 
   name: Adan
-  lr: 5e-4
+  lr: 2e-2
   weight_decay: 0.02
   eps: 1e-8
   opt_betas: [0.98, 0.92, 0.99]
