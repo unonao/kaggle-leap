@@ -3,13 +3,13 @@ defaults:
 
 soptimizer: 
   name: Adan
-  lr: 2e-3
+  lr: 4e-3
 
 train_data_skip_mod: 1
 valid_data_skip_mod: 14
 additional_data_skip_mod: 1
 val_check_interval: 36000
-max_epochs: 2
+max_epochs: 1
 
 
 # model
