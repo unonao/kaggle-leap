@@ -11,5 +11,5 @@ model:
   spectral_connection: False
   is_same_spectral: False
   use_boundary: True
-  diag_edge: True
+  diag_edge: False
   self_loop: True
