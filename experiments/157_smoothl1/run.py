@@ -1455,6 +1455,8 @@ class LeapLightningModule(LightningModule):
         self.loss_fc = None
         if cfg.exp.loss.name == "L1Loss":
             self.loss_fc = nn.L1Loss()
+        elif cfg.exp.loss.name == "SmoothL1Loss":
+            self.loss_fc = nn.SmoothL1Loss()
         elif cfg.exp.loss.name == "MSELoss":
             self.loss_fc = nn.MSELoss()
         self.model_ema = None

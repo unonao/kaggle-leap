@@ -1,0 +1,39 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+scheduler:
+  name: ReduceLROnPlateau
+  mode: max
+  factor: 0.1
+  patience: 0
+  threshold: 2e-4
+  threshold_mode: abs
+  cooldown: 2
+  min_lr: 0
+
+optimizer: 
+  name: Adan
+  lr: 2e-2
+
+loss:
+  name: SmoothL1Loss
+
+bound_diff_rate: null
+
+train_data_skip_mod: 1
+valid_data_skip_mod: 14
+additional_data_skip_mod: 1
+val_check_interval: 9000
+max_epochs: 4
+
+
+# model
+model:
+  gnn_n_layers1: 1
+  gnn_n_layers2: 1
+  gnn_kernel_sizes1: [1,1]
+  gnn_kernel_sizes2: [1,1]
+  gnn_bias: True  
+  spectral_connection: False
+  is_same_spectral: False
+  self_loop: True
