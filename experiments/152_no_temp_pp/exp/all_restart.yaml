@@ -1,0 +1,18 @@
+defaults:
+  - all@_here_ # ベースの設定ファイルを指定する
+
+restart_ckpt_path: output/experiments/152_no_temp_pp/all/checkpoints/best_model.ckpt
+
+scheduler:
+  name: ReduceLROnPlateau
+  mode: max
+  factor: 0.1
+  patience: 0
+  threshold: 2e-4
+  threshold_mode: abs
+  cooldown: 3
+  min_lr: 0
+
+optimizer: 
+  name: Adan
+  lr: 2e-4
