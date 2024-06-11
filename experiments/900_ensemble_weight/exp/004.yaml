@@ -1,0 +1,10 @@
+# r2_score: 0.777796105385758
+seed: 7
+sample_submission_path: input/sample_submission.parquet
+
+exp_names:
+  - 128_fix_agg_close/001_all
+  - 140_global_avg/all
+weights_list:
+  - [0.5, 0.5]
+

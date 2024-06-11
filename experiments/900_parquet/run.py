@@ -41,13 +41,13 @@ def ensemble(cfg, output_path):
         if label_array is None:
             with utils.trace("load label"):
                 label_array = pl.read_parquet(
-                    gcs_path + "val2_label.parquet",
+                    gcs_path + "label.parquet",
                     retries=5,
                     n_rows=N_ROWS_WHEN_DEBUG if cfg.debug else None,
                 )[:, 1:].to_numpy()
         with utils.trace("load pred"):
             pred = pl.read_parquet(
-                gcs_path + "val2_predict.parquet",
+                gcs_path + "predict.parquet",
                 retries=5,
                 n_rows=N_ROWS_WHEN_DEBUG if cfg.debug else None,
             )[:, 1:].to_numpy()
@@ -91,37 +91,35 @@ def ensemble(cfg, output_path):
     del pred_list
     gc.collect()
 
-    # ensemble
-    for name in ["valid_pred", "submission"]:
-        pred_list = []
-        for exp_name in cfg.exp.exp_names:
-            gcs_path = f"gs://{cfg.dir.gcs_bucket}/{cfg.dir.gcs_base_dir}/experiments/{exp_name}/"
-            with utils.trace("load pred"):
-                pred = pl.read_parquet(
-                    gcs_path + f"{name}.parquet",
-                    n_rows=N_ROWS_WHEN_DEBUG if cfg.debug else None,
-                )[:, 1:].to_numpy()
-            pred_list.append(pred)
-            gc.collect()
-
-        sample_submission_df = pl.read_parquet(
-            cfg.exp.sample_submission_path,
-            n_rows=N_ROWS_WHEN_DEBUG if cfg.debug else None,
+    # test ensemble
+    pred_list = []
+    for exp_name in cfg.exp.exp_names:
+        gcs_path = (
+            f"gs://{cfg.dir.gcs_bucket}/{cfg.dir.gcs_base_dir}/experiments/{exp_name}/"
         )
-        ensemble_pred = weighted_ensemble(
-            pred_list, best_weights
-        )  # weightはすでにかかっているのでかけない
-        df = pl.concat(
-            [
-                sample_submission_df.select("sample_id"),
-                pl.from_numpy(ensemble_pred, schema=sample_submission_df.columns[1:]),
-            ],
-            how="horizontal",
-        )
-        df.write_parquet(output_path / f"{name}.parquet")
-        print(df)
-        del pred_list, df
+        with utils.trace("load pred"):
+            pred = pl.read_parquet(
+                gcs_path + "submission.parquet",
+                n_rows=N_ROWS_WHEN_DEBUG if cfg.debug else None,
+            )[:, 1:].to_numpy()
+        pred_list.append(pred)
         gc.collect()
+
+    sample_submission_df = pl.read_parquet(
+        cfg.exp.sample_submission_path, n_rows=N_ROWS_WHEN_DEBUG if cfg.debug else None
+    )
+    ensemble_pred = weighted_ensemble(
+        pred_list, best_weights
+    )  # weightはすでにかかっているのでかけない
+    sample_submission_df = pl.concat(
+        [
+            sample_submission_df.select("sample_id"),
+            pl.from_numpy(ensemble_pred, schema=sample_submission_df.columns[1:]),
+        ],
+        how="horizontal",
+    )
+    sample_submission_df.write_parquet(output_path / "submission.parquet")
+    print(sample_submission_df)
 
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
