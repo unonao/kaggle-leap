@@ -1,0 +1,20 @@
+defaults:
+  - all@_here_ # ベースの設定ファイルを指定する
+
+
+scheduler:
+  name: ReduceLROnPlateau
+  mode: max
+  factor: 0.2
+  patience: 0
+  threshold: 2e-4
+  threshold_mode: abs
+  cooldown: 1
+  min_lr: 0
+
+loss:
+  name: MSELoss
+
+optimizer: 
+  name: Adan
+  lr: 2e-3
