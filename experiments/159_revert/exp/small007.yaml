@@ -4,10 +4,10 @@ defaults:
 
 # model
 model:
-  gnn_n_layers1: 3
-  gnn_n_layers2: 3
+  gnn_n_layers1: 4
+  gnn_n_layers2: 4
   gnn_kernel_sizes1: [1,1]
-  gnn_kernel_sizes2: [3,3]
+  gnn_kernel_sizes2: [1,1]
   gnn_bias: True  
   spectral_connection: False
   is_same_spectral: False
