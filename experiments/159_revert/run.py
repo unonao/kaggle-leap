@@ -1645,7 +1645,7 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
         verbose=True,
         monitor=monitor,
         mode="max",
-        save_top_k=1,
+        save_top_k=3,
         save_last=False,
         enable_version_counter=False,
     )
