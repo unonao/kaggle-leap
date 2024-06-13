@@ -1,6 +1,8 @@
 # メモ
 
-python experiments/140_global_avg/run.py exp=all
 
-python experiments/165_gnn_unet_multi/run.py exp=small005
-python experiments/165_gnn_unet_multi/run.py exp=small006
+python experiments/168_change_valid/run.py exp=small
+python experiments/168_change_valid/run.py exp=small001
+python experiments/168_change_valid/run.py exp=small002
+
+python experiments/168_change_valid/run.py exp=all

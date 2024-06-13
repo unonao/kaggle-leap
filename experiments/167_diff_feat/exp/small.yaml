@@ -1,0 +1,32 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+# model
+model:
+  depth: 2
+  unet_depth: 1
+  gnn_n_layers: 1
+  gnn_kernel_sizes: [1]
+  n_base_channels: 768
+
+
+seq_feats: [
+  relative_humidity_all,
+  cloud_snow_rate,
+  cloud_water,
+  q2q3_mean,
+  uv_mean,
+  pbuf_mean,
+  t_diff,
+  q1_diff,
+  q2_diff,
+  q3_diff,
+  u_diff,
+  v_diff,
+  ozone_diff,
+  ch4_diff,
+  n2o_diff,
+  q2q3_mean_diff,
+  uv_mean_diff,
+  pbuf_mean_diff,
+]
