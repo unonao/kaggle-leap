@@ -1,0 +1,12 @@
+seed: 7
+sample_submission_path: input/sample_submission.parquet
+
+exp_names:
+  - 104_reduce_lr_on_plateau/channels256_low_lr_all 
+  - 097_attention_scalar/003_all
+  - 104_reduce_lr_on_plateau/base_all_pred
+
+weights_list:
+  - [0.5, 0.4, 0.1]
+  - [0.5, 0.3, 0.2]
+  - [0.4, 0.3, 0.3]

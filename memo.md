@@ -2,4 +2,5 @@
 
 python experiments/140_global_avg/run.py exp=all
 
-python experiments/149_diag_edge/run.py exp=all003
+python experiments/165_gnn_unet_multi/run.py exp=small005
+python experiments/165_gnn_unet_multi/run.py exp=small006
