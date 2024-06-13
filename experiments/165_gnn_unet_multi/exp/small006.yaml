@@ -1,0 +1,10 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+# model
+model:
+  depth: 3
+  unet_depth: 2
+  gnn_n_layers: 1
+  gnn_kernel_sizes: [1]
+  n_base_channels: 384
