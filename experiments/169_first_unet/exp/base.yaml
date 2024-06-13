@@ -99,7 +99,7 @@ model:
   gnn_bias: True  
   spectral_connection: False
   is_same_spectral: False
-  self_loop: True
+  self_loop: False
   
 norm_seq: False
 
