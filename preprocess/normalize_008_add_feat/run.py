@@ -100,10 +100,10 @@ def calc_feat(cfg, x_array, y_array, output_path):
     # cloud_water_all, cloud_water_log_all
     cloud_water_array = x_array[:, 120:180] + x_array[:, 180:240]
     cloud_water_log_array = np.log1p(cloud_water_array * 1e9)
-    mean_feat_dict["cloud_water_all"] = np.nanmean(cloud_water_array, axis=0)
-    mean_feat_dict["cloud_water_log_all"] = np.nanmean(cloud_water_log_array, axis=0)
-    std_feat_dict["cloud_water_all"] = np.nanstd(cloud_water_array, axis=0)
-    std_feat_dict["cloud_water_log_all"] = np.nanstd(cloud_water_log_array, axis=0)
+    mean_feat_dict["cloud_water"] = np.nanmean(cloud_water_array, axis=0)
+    mean_feat_dict["cloud_water_log"] = np.nanmean(cloud_water_log_array, axis=0)
+    std_feat_dict["cloud_water"] = np.nanstd(cloud_water_array, axis=0)
+    std_feat_dict["cloud_water_log"] = np.nanstd(cloud_water_log_array, axis=0)
     mean_feat_dict["cloud_water_all"] = np.nanmean(cloud_water_array)
     mean_feat_dict["cloud_water_log_all"] = np.nanmean(cloud_water_log_array)
     std_feat_dict["cloud_water_all"] = np.nanstd(cloud_water_array)
