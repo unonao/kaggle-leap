@@ -1,0 +1,35 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+# [base, y_relative_humidity_all, relative_humidity_all, q1_log_all, q2_log_all, q3_log_all, cloud_water_all, cloud_water_log_all, q2q3_mean, uv_mean, pbuf_mean, 
+# t_diff, q1_diff, q2_diff, q3_diff, u_diff, v_diff, ozone_diff, ch4_diff, n2o_diff, q2q3_mean_diff, uv_mean_diff, pbuf_mean_diff, 
+# t_diff_mean_3, q1_diff_mean_3, q2_diff_mean_3, q3_diff_mean_3, u_diff_mean_3, v_diff_mean_3, ozone_diff_mean_3, ch4_diff_mean_3, n2o_diff_mean_3, q2q3_mean_diff_mean_3, uv_mean_diff_mean_3, pbuf_mean_diff_mean_3, 
+# t_diff_std_3, q1_diff_std_3, q2_diff_std_3, q3_diff_std_3, u_diff_std_3, v_diff_std_3, ozone_diff_std_3, ch4_diff_std_3, n2o_diff_std_3, q2q3_mean_diff_std_3, uv_mean_diff_std_3, pbuf_mean_diff_std_3, 
+#t_diff_mean_5, q1_diff_mean_5, q2_diff_mean_5, q3_diff_mean_5, u_diff_mean_5, v_diff_mean_5, ozone_diff_mean_5, ch4_diff_mean_5, n2o_diff_mean_5, q2q3_mean_diff_mean_5, uv_mean_diff_mean_5, pbuf_mean_diff_mean_5, 
+# t_diff_std_5, q1_diff_std_5, q2_diff_std_5, q3_diff_std_5, u_diff_std_5, v_diff_std_5, ozone_diff_std_5, ch4_diff_std_5, n2o_diff_std_5, q2q3_mean_diff_std_5, uv_mean_diff_std_5, pbuf_mean_diff_std_5, t_diff_mean_7, q1_diff_mean_7, q2_diff_mean_7, q3_diff_mean_7, u_diff_mean_7, v_diff_mean_7, ozone_diff_mean_7, ch4_diff_mean_7, n2o_diff_mean_7, q2q3_mean_diff_mean_7, uv_mean_diff_mean_7, pbuf_mean_diff_mean_7, 
+# t_diff_std_7, q1_diff_std_7, q2_diff_std_7, q3_diff_std_7, u_diff_std_7, v_diff_std_7, ozone_diff_std_7, ch4_diff_std_7, n2o_diff_std_7, q2q3_mean_diff_std_7, uv_mean_diff_std_7, pbuf_mean_diff_std_7, 
+# t_diff_pre, q1_diff_pre, q2_diff_pre, q3_diff_pre, u_diff_pre, v_diff_pre, ozone_diff_pre, ch4_diff_pre, n2o_diff_pre, q2q3_mean_diff_pre, uv_mean_diff_pre, pbuf_mean_diff_pre, 
+# t_all, q1_all, q2_all, q3_all, u_all, v_all, ozone_all, ch4_all, n2o_all
+
+seq_feats: [
+  relative_humidity_all,
+  cloud_snow_rate,
+  cloud_water,
+  q2q3_mean,
+  uv_mean,
+  pbuf_mean,
+  t_diff,
+  q1_diff,
+  q2_diff,
+  q3_diff,
+  u_diff,
+  v_diff,
+  ozone_diff,
+  ch4_diff,
+  n2o_diff,
+  q2q3_mean_diff,
+  uv_mean_diff,
+  pbuf_mean_diff,
+  # 
+  t_diff_std_3, q1_diff_std_3, q2_diff_std_3, q3_diff_std_3, u_diff_std_3, v_diff_std_3, ozone_diff_std_3, ch4_diff_std_3, n2o_diff_std_3, q2q3_mean_diff_std_3, uv_mean_diff_std_3, pbuf_mean_diff_std_3, 
+]
