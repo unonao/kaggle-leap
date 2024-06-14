@@ -36,7 +36,12 @@ def rolling_mean_std(data, window_size):
     variance[variance < 0] = 0
     std = np.sqrt(variance)
 
-    return np.nanmean(mean, axis=0), np.nanmean(std, axis=0)
+    return (
+        np.nanmean(mean, axis=0),
+        np.nanstd(mean, axis=0),
+        np.nanmean(std, axis=0),
+        np.nanstd(std, axis=0),
+    )
 
 
 def calc_feat(cfg, x_array, y_array, output_path):
@@ -164,67 +169,153 @@ def calc_feat(cfg, x_array, y_array, output_path):
     # 差分のmean,stdを保存
     for window_size in [3, 5, 7]:
         print(f"window_size: {window_size}")
-        t_diff_array_mean, t_diff_array_std = rolling_mean_std(
-            t_diff_array, window_size
+        (
+            t_diff_array_mean_mean,
+            t_diff_array_mean_std,
+            t_diff_array_std_mean,
+            t_diff_array_std_std,
+        ) = rolling_mean_std(t_diff_array, window_size)
+        (
+            q1_diff_array_mean_mean,
+            q1_diff_array_mean_std,
+            q1_diff_array_std_mean,
+            q1_diff_array_std_std,
+        ) = rolling_mean_std(q1_diff_array, window_size)
+        (
+            q2_diff_array_mean_mean,
+            q2_diff_array_mean_std,
+            q2_diff_array_std_mean,
+            q2_diff_array_std_std,
+        ) = rolling_mean_std(q2_diff_array, window_size)
+        (
+            q3_diff_array_mean_mean,
+            q3_diff_array_mean_std,
+            q3_diff_array_std_mean,
+            q3_diff_array_std_std,
+        ) = rolling_mean_std(q3_diff_array, window_size)
+        (
+            u_diff_array_mean_mean,
+            u_diff_array_mean_std,
+            u_diff_array_std_mean,
+            u_diff_array_std_std,
+        ) = rolling_mean_std(u_diff_array, window_size)
+        (
+            v_diff_array_mean_mean,
+            v_diff_array_mean_std,
+            v_diff_array_std_mean,
+            v_diff_array_std_std,
+        ) = rolling_mean_std(v_diff_array, window_size)
+        (
+            ozone_diff_array_mean_mean,
+            ozone_diff_array_mean_std,
+            ozone_diff_array_std_mean,
+            ozone_diff_array_std_std,
+        ) = rolling_mean_std(ozone_diff_array, window_size)
+        (
+            ch4_diff_array_mean_mean,
+            ch4_diff_array_mean_std,
+            ch4_diff_array_std_mean,
+            ch4_diff_array_std_std,
+        ) = rolling_mean_std(ch4_diff_array, window_size)
+        (
+            n2o_diff_array_mean_mean,
+            n2o_diff_array_mean_std,
+            n2o_diff_array_std_mean,
+            n2o_diff_array_std_std,
+        ) = rolling_mean_std(n2o_diff_array, window_size)
+        (
+            q2q3_mean_array_diff_mean_mean,
+            q2q3_mean_array_diff_mean_std,
+            q2q3_mean_array_diff_std_mean,
+            q2q3_mean_array_diff_std_std,
+        ) = rolling_mean_std(q2q3_mean_array_diff, window_size)
+        (
+            uv_mean_array_diff_mean_mean,
+            uv_mean_array_diff_mean_std,
+            uv_mean_array_diff_std_mean,
+            uv_mean_array_diff_std_std,
+        ) = rolling_mean_std(uv_mean_array_diff, window_size)
+        (
+            pbuf_mean_array_diff_mean_mean,
+            pbuf_mean_array_diff_mean_std,
+            pbuf_mean_array_diff_std_mean,
+            pbuf_mean_array_diff_std_std,
+        ) = rolling_mean_std(pbuf_mean_array_diff, window_size)
+
+        # mean mean
+        mean_feat_dict[f"t_diff_mean_{window_size}"] = t_diff_array_mean_mean
+        mean_feat_dict[f"q1_diff_mean_{window_size}"] = q1_diff_array_mean_mean
+        mean_feat_dict[f"q2_diff_mean_{window_size}"] = q2_diff_array_mean_mean
+        mean_feat_dict[f"q3_diff_mean_{window_size}"] = q3_diff_array_mean_mean
+        mean_feat_dict[f"u_diff_mean_{window_size}"] = u_diff_array_mean_mean
+        mean_feat_dict[f"v_diff_mean_{window_size}"] = v_diff_array_mean_mean
+        mean_feat_dict[f"ozone_diff_mean_{window_size}"] = ozone_diff_array_mean_mean
+        mean_feat_dict[f"ch4_diff_mean_{window_size}"] = ch4_diff_array_mean_mean
+        mean_feat_dict[f"n2o_diff_mean_{window_size}"] = n2o_diff_array_mean_mean
+        mean_feat_dict[f"q2q3_mean_diff_mean_{window_size}"] = (
+            q2q3_mean_array_diff_mean_mean
         )
-        print(f"{t_diff_array_mean.shape=}, {t_diff_array_std.shape=}")
-        q1_diff_array_mean, q1_diff_array_std = rolling_mean_std(
-            q1_diff_array, window_size
+        mean_feat_dict[f"uv_mean_diff_mean_{window_size}"] = (
+            uv_mean_array_diff_mean_mean
         )
-        q2_diff_array_mean, q2_diff_array_std = rolling_mean_std(
-            q2_diff_array, window_size
+        mean_feat_dict[f"pbuf_mean_diff_mean_{window_size}"] = (
+            pbuf_mean_array_diff_mean_mean
         )
-        q3_diff_array_mean, q3_diff_array_std = rolling_mean_std(
-            q3_diff_array, window_size
+
+        # mean std
+        std_feat_dict[f"t_diff_mean_{window_size}"] = t_diff_array_mean_std
+        std_feat_dict[f"q1_diff_mean_{window_size}"] = q1_diff_array_mean_std
+        std_feat_dict[f"q2_diff_mean_{window_size}"] = q2_diff_array_mean_std
+        std_feat_dict[f"q3_diff_mean_{window_size}"] = q3_diff_array_mean_std
+        std_feat_dict[f"u_diff_mean_{window_size}"] = u_diff_array_mean_std
+        std_feat_dict[f"v_diff_mean_{window_size}"] = v_diff_array_mean_std
+        std_feat_dict[f"ozone_diff_mean_{window_size}"] = ozone_diff_array_mean_std
+        std_feat_dict[f"ch4_diff_mean_{window_size}"] = ch4_diff_array_mean_std
+        std_feat_dict[f"n2o_diff_mean_{window_size}"] = n2o_diff_array_mean_std
+        std_feat_dict[f"q2q3_mean_diff_mean_{window_size}"] = (
+            q2q3_mean_array_diff_mean_std
         )
-        u_diff_array_mean, u_diff_array_std = rolling_mean_std(
-            u_diff_array, window_size
+        std_feat_dict[f"uv_mean_diff_mean_{window_size}"] = uv_mean_array_diff_mean_std
+        std_feat_dict[f"pbuf_mean_diff_mean_{window_size}"] = (
+            pbuf_mean_array_diff_mean_std
         )
-        v_diff_array_mean, v_diff_array_std = rolling_mean_std(
-            v_diff_array, window_size
+
+        # std mean
+        mean_feat_dict[f"t_diff_std_{window_size}"] = t_diff_array_std_mean
+        mean_feat_dict[f"q1_diff_std_{window_size}"] = q1_diff_array_std_mean
+        mean_feat_dict[f"q2_diff_std_{window_size}"] = q2_diff_array_std_mean
+        mean_feat_dict[f"q3_diff_std_{window_size}"] = q3_diff_array_std_mean
+        mean_feat_dict[f"u_diff_std_{window_size}"] = u_diff_array_std_mean
+        mean_feat_dict[f"v_diff_std_{window_size}"] = v_diff_array_std_mean
+        mean_feat_dict[f"ozone_diff_std_{window_size}"] = ozone_diff_array_std_mean
+        mean_feat_dict[f"ch4_diff_std_{window_size}"] = ch4_diff_array_std_mean
+        mean_feat_dict[f"n2o_diff_std_{window_size}"] = n2o_diff_array_std_mean
+        mean_feat_dict[f"q2q3_mean_diff_std_{window_size}"] = (
+            q2q3_mean_array_diff_std_mean
         )
-        ozone_diff_array_mean, ozone_diff_array_std = rolling_mean_std(
-            ozone_diff_array, window_size
+        mean_feat_dict[f"uv_mean_diff_std_{window_size}"] = uv_mean_array_diff_std_mean
+        mean_feat_dict[f"pbuf_mean_diff_std_{window_size}"] = (
+            pbuf_mean_array_diff_std_mean
         )
-        ch4_diff_array_mean, ch4_diff_array_std = rolling_mean_std(
-            ch4_diff_array, window_size
+
+        # std std
+        std_feat_dict[f"t_diff_std_{window_size}"] = t_diff_array_std_std
+        std_feat_dict[f"q1_diff_std_{window_size}"] = q1_diff_array_std_std
+        std_feat_dict[f"q2_diff_std_{window_size}"] = q2_diff_array_std_std
+        std_feat_dict[f"q3_diff_std_{window_size}"] = q3_diff_array_std_std
+        std_feat_dict[f"u_diff_std_{window_size}"] = u_diff_array_std_std
+        std_feat_dict[f"v_diff_std_{window_size}"] = v_diff_array_std_std
+        std_feat_dict[f"ozone_diff_std_{window_size}"] = ozone_diff_array_std_std
+        std_feat_dict[f"ch4_diff_std_{window_size}"] = ch4_diff_array_std_std
+        std_feat_dict[f"n2o_diff_std_{window_size}"] = n2o_diff_array_std_std
+        std_feat_dict[f"q2q3_mean_diff_std_{window_size}"] = (
+            q2q3_mean_array_diff_std_std
         )
-        n2o_diff_array_mean, n2o_diff_array_std = rolling_mean_std(
-            n2o_diff_array, window_size
+        std_feat_dict[f"uv_mean_diff_std_{window_size}"] = uv_mean_array_diff_std_std
+        std_feat_dict[f"pbuf_mean_diff_std_{window_size}"] = (
+            pbuf_mean_array_diff_std_std
         )
-        q2q3_mean_array_diff_mean, q2q3_mean_array_diff_std = rolling_mean_std(
-            q2q3_mean_array_diff, window_size
-        )
-        uv_mean_array_diff_mean, uv_mean_array_diff_std = rolling_mean_std(
-            uv_mean_array_diff, window_size
-        )
-        pbuf_mean_array_diff_mean, pbuf_mean_array_diff_std = rolling_mean_std(
-            pbuf_mean_array_diff, window_size
-        )
-        mean_feat_dict[f"t_diff_mean_{window_size}"] = t_diff_array_mean
-        mean_feat_dict[f"q1_diff_mean_{window_size}"] = q1_diff_array_mean
-        mean_feat_dict[f"q2_diff_mean_{window_size}"] = q2_diff_array_mean
-        mean_feat_dict[f"q3_diff_mean_{window_size}"] = q3_diff_array_mean
-        mean_feat_dict[f"u_diff_mean_{window_size}"] = u_diff_array_mean
-        mean_feat_dict[f"v_diff_mean_{window_size}"] = v_diff_array_mean
-        mean_feat_dict[f"ozone_diff_mean_{window_size}"] = ozone_diff_array_mean
-        mean_feat_dict[f"ch4_diff_mean_{window_size}"] = ch4_diff_array_mean
-        mean_feat_dict[f"n2o_diff_mean_{window_size}"] = n2o_diff_array_mean
-        mean_feat_dict[f"q2q3_mean_diff_mean_{window_size}"] = q2q3_mean_array_diff_mean
-        mean_feat_dict[f"uv_mean_diff_mean_{window_size}"] = uv_mean_array_diff_mean
-        mean_feat_dict[f"pbuf_mean_diff_mean_{window_size}"] = pbuf_mean_array_diff_mean
-        std_feat_dict[f"t_diff_std_{window_size}"] = t_diff_array_std
-        std_feat_dict[f"q1_diff_std_{window_size}"] = q1_diff_array_std
-        std_feat_dict[f"q2_diff_std_{window_size}"] = q2_diff_array_std
-        std_feat_dict[f"q3_diff_std_{window_size}"] = q3_diff_array_std
-        std_feat_dict[f"u_diff_std_{window_size}"] = u_diff_array_std
-        std_feat_dict[f"v_diff_std_{window_size}"] = v_diff_array_std
-        std_feat_dict[f"ozone_diff_std_{window_size}"] = ozone_diff_array_std
-        std_feat_dict[f"ch4_diff_std_{window_size}"] = ch4_diff_array_std
-        std_feat_dict[f"n2o_diff_std_{window_size}"] = n2o_diff_array_std
-        std_feat_dict[f"q2q3_mean_diff_std_{window_size}"] = q2q3_mean_array_diff_std
-        std_feat_dict[f"uv_mean_diff_std_{window_size}"] = uv_mean_array_diff_std
-        std_feat_dict[f"pbuf_mean_diff_std_{window_size}"] = pbuf_mean_array_diff_std
+
     del (
         t_diff_array,
         q1_diff_array,
