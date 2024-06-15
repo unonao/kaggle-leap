@@ -11,7 +11,7 @@ model:
   use_batch_norm: True
   embedding_dim: 10
   categorical_embedding_dim: 5
-  n_unet: 3
+  n_unet: 2
   depth: 2
   dropout: 0.0
   n_base_channels: 512
