@@ -30,5 +30,6 @@ model:
   gnn_n_layers: 1
   gnn_kernel_sizes: [1]
   n_base_channels: 768
+  self_loop: False
 
 
