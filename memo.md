@@ -1,10 +1,11 @@
 # メモ
 
-python experiments/201_unet_multi/run.py exp=small_512_n3
-python experiments/202_no_concat/run.py exp=small_512
-python experiments/201_unet_multi/run.py exp=small006
-python experiments/201_unet_multi/run.py exp=small007
-python experiments/202_no_concat/run.py exp=small_512_n3
+python experiments/201_unet_multi/run.py exp=small_1024
+python experiments/201_unet_multi/run.py exp=small_768_n3
+python experiments/201_unet_multi/run.py exp=small_1024_n3
 
 
 python experiments/201_unet_multi/run.py exp=all_512_n3.yaml
+
+
+python experiments/168_change_valid/run.py exp=all002_no_self
