@@ -1,12 +1,10 @@
 # メモ
 
-python experiments/201_unet_multi/run.py exp=small004 
-python experiments/201_unet_multi/run.py exp=small001
-python experiments/201_unet_multi/run.py exp=small002
-python experiments/201_unet_multi/run.py exp=small003 
+python experiments/201_unet_multi/run.py exp=small_512_n3
+python experiments/202_no_concat/run.py exp=small_512
+python experiments/201_unet_multi/run.py exp=small006
+python experiments/201_unet_multi/run.py exp=small007
+python experiments/202_no_concat/run.py exp=small_512_n3
 
 
-001: 129M
-002: 345M
-003: 185M
-004: 87.1 M
+python experiments/201_unet_multi/run.py exp=all_512_n3.yaml
