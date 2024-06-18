@@ -1015,6 +1015,8 @@ class LeapModel(nn.Module):
             in_channels = n_base_channels
         self.unet_layers = nn.ModuleList(unet_layers)
 
+        in_channels += same_height_hidden_sizes[-1]
+
         self.t_head = MLP(
             in_channels,
             output_hidden_sizes + [2],

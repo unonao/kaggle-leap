@@ -1,10 +1,22 @@
 # Kaggle leap
 
+
+## gcs
+
+マウント後dockerでアクセスするためのオプションをセット
+```
+sudo vim /etc/fuse.conf
+```
+で use_allow_user のコメントアウトを外す
+
+
 gscfuseの自動マウント(/etc/fstab に追記)
 ```
+sudo vim /etc/fstab
+
 kaggle-leap /home/naoki.a.murakami/kaggle-leap/output gcsfuse rw,file_mode=777,dir_mode=777,allow_other,_netdev,only_dir=kami,rename_dir_limit=20
 ```
-gcsfuse --only-dir kami --file-mode 777 --dir-mode 777 --allow_other kaggle-leap /home/naoki.a.murakami/kaggle-leap/output
+gcsfuse --foreground --debug_gcs -o allow_other --only-dir kami --file-mode 777 --dir-mode 777 kaggle-leap /home/naoki.a.murakami/kaggle-leap/output
 
 ```
 # https://cloud.google.com/compute/docs/disks/add-local-ssd?hl=ja#formatandmount

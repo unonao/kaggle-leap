@@ -6,7 +6,7 @@ scheduler:
   mode: max
   factor: 0.2
   patience: 1
-  threshold: 3e-4
+  threshold: 1e-4
   threshold_mode: abs
   cooldown: 1
   min_lr: 0
@@ -24,8 +24,8 @@ max_epochs: 4
 
 
 model:
-  same_height_hidden_sizes: [512, 512]
-  output_hidden_sizes: [512, 512]
+  same_height_hidden_sizes: [128, 128]
+  output_hidden_sizes: [128, 128]
   use_input_layer_norm: False
   use_output_layer_norm: True
   use_batch_norm: True
