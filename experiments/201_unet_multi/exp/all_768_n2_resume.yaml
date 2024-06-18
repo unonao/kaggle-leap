@@ -1,0 +1,8 @@
+defaults:
+  - all_768_n2@_here_ # ベースの設定ファイルを指定する
+
+resume_ckpt_path: output/experiments/201_unet_multi/all_768_n2.yaml/checkpoints/epoch=0-step=45000.ckpt
+
+optimizer: 
+  name: Adan
+  lr: 1e-4
