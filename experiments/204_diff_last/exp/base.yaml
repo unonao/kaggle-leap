@@ -1,0 +1,150 @@
+seed: 7
+
+modes: [train, valid2, test, viz]
+
+fill_submission_path: input/118_valid_pred_ch384_6_year_submission.parquet # output/experiments/118_valid_pred/ch384_6year/submission.parquet
+dataset_dir: input/make_webdataset_batch/all
+scale_dir: output/preprocess/normalize_009_rate_feat/bolton
+test_path: input/test.parquet
+valid_path: input/valid.parquet
+sample_submission_path: input/sample_submission.parquet
+viz_notebook_path: notebook/result_viz_004.ipynb
+tmelt_tice_dir: output/preprocess/tmelt_tice/001
+pred_checkpoint_path: null
+rh_method: Bolton
+
+
+# data 指定期間内のデータを利用。skip_modで間引く
+train_start: [1, 2] #1の2月
+train_end: [7, 7]
+valid_start: [7, 8]
+valid_end: [8, 1]
+additional_start: [8, 2]
+additional_end: [9, 1]
+
+train_data_skip_mod: 70
+valid_data_skip_mod: 14
+additional_data_skip_mod: 70
+
+eps: 1e-60
+outlier_std_rate: 40
+
+
+fill_target: [
+  ptend_q0002_12,
+  ptend_q0002_13,
+  ptend_q0002_14,
+  ptend_q0002_15,
+  ptend_q0002_16,
+  ptend_q0002_17,
+  ptend_q0002_18,
+  ptend_q0002_19,
+  ptend_q0002_20,
+  ptend_q0002_21,
+  ptend_q0002_22,
+  ptend_q0002_23,
+  ptend_q0002_24,
+  ptend_q0002_25,
+  ptend_q0002_26,
+  ptend_q0002_27, # ptend_q0002_27 0.9515178363448382
+  ptend_q0002_28, # ptend_q0002_28 0.9655142812325087
+]
+
+unuse_cols_list:
+  - ${cols.weight_zero_list}
+  - ${exp.fill_target}
+
+#   t_per_change, q1_per_change, q2_per_change, q3_per_change, u_per_change, v_per_change, ozone_per_change, ch4_per_change, n2o_per_change, q2q3_mean_per_change, uv_mean_per_change, pbuf_mean_per_change, 
+
+seq_feats: [
+  relative_humidity_all,
+  cloud_snow_rate,
+  cloud_water,
+  q2q3_mean,
+  uv_mean,
+  pbuf_mean,
+  t_diff,
+  q1_diff,
+  q2_diff,
+  q3_diff,
+  u_diff,
+  v_diff,
+  ozone_diff,
+  ch4_diff,
+  n2o_diff,
+  q2q3_mean_diff,
+  uv_mean_diff,
+  pbuf_mean_diff,
+]
+
+scalar_feats: [
+]
+
+
+
+model:
+  same_height_hidden_sizes: [128, 128]
+  output_hidden_sizes: [128, 128]
+  use_input_layer_norm: False
+  use_output_layer_norm: True
+  use_batch_norm: True
+  embedding_dim: 10
+  categorical_embedding_dim: 5
+  depth: 3
+  n_unet: 1
+  dropout: 0.0
+  n_base_channels: 128
+
+
+norm_seq: False
+
+# Training
+max_epochs: 14
+early_stopping_patience: 3
+num_workers: 8
+train_batch_size: 1
+valid_batch_size: 1
+accumulate_grad_batches: 4
+
+# LightningModule
+#scheduler:
+#  name: CosineAnnealingWarmRestarts
+#  use_one_epoch_warmup: True
+#scheduler:
+#  name: ReduceLROnPlateau
+#  mode: max
+#  factor: 0.2
+#  patience: 1
+#  threshold: 1e-4
+#  threshold_mode: rel
+#  cooldown: 0
+#  min_lr: 0
+#scheduler:
+#  name: CyclicLR
+#  base_lr: 1e-6
+#  max_lr: 5e-4
+#  num_cycles: 3
+scheduler:
+  name: CosineAnnealingWarmRestarts
+  use_one_epoch_warmup: True
+optimizer: 
+  name: Adan
+  lr: 5e-4
+  weight_decay: 0.02
+  eps: 1e-8
+  opt_betas: [0.98, 0.92, 0.99]
+  max_grad_norm: 0.0
+  no_prox: False
+ema:
+  use_ema: True
+  decay: 0.995
+
+
+
+# trainer
+accelerator: auto
+precision: "16-mixed" # https://lightning.ai/docs/pytorch/stable/common/trainer.html#precision
+gradient_clip_val: 1.0
+resume_ckpt_path: null
+val_check_interval: null # 学習データ量増やしたら設定しておくと良さそう
+val_check_warmup: 5000
