@@ -2,9 +2,9 @@
 
 gscfuseの自動マウント(/etc/fstab に追記)
 ```
-kaggle-leap /home/naoki.a.murakami/kaggle-leap/output gcsfuse rw,file_mode=777,dir_mode=777,allow_other,_netdev,only_dir=kami,rename_dir_limit=20
+kaggle-leap /home/naoki.a.murakami/kaggle-leap/output gcsfuse rw,file_mode=777,dir_mode=777,_netdev,only_dir=kami,rename_dir_limit=20
 ```
-gcsfuse --only-dir kami kaggle-leap /home/naoki.a.murakami/kaggle-leap/output
+gcsfuse --only-dir kami --file-mode 777 --dir-mode 777 kaggle-leap /home/naoki.a.murakami/kaggle-leap/output
 
 ```
 # https://cloud.google.com/compute/docs/disks/add-local-ssd?hl=ja#formatandmount
@@ -14,7 +14,10 @@ sudo update-initramfs -u
 ```
 
 gcloud storage cp -r gs://kaggle-leap/kami/leap-atmospheric-physics-ai-climsim input
-gcloud storage cp -r gs://kaggle-leap/kami/preprocess/make_webdataset_batch input
+mkdir input/make_webdataset_batch
+gcloud storage cp -r gs://kaggle-leap/kami/preprocess/make_webdataset_batch/all input/make_webdataset_batch/
+
+
 gcloud storage cp -r gs://kaggle-leap/kami/test.parquet input
 gcloud storage cp -r gs://kaggle-leap/kami/train.parquet input
 gcloud storage cp -r gs://kaggle-leap/kami/valid.parquet input
