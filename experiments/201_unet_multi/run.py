@@ -1451,7 +1451,13 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
     valid_name = get_valid_name(cfg)
     monitor = f"valid_r2_score/{valid_name}"
     dm = LeapLightningDataModule(cfg)
-    model = LeapLightningModule(cfg)
+
+    if cfg.exp.restart_ckpt_path:
+        model = LeapLightningModule.load_from_checkpoint(
+            cfg.exp.restart_ckpt_path, cfg=cfg
+        )
+    else:
+        model = LeapLightningModule(cfg)
     checkpoint_cb = ModelCheckpoint(
         dirpath=output_path / "checkpoints",
         verbose=True,

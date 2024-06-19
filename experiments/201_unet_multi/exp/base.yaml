@@ -12,7 +12,7 @@ viz_notebook_path: notebook/result_viz_004.ipynb
 tmelt_tice_dir: output/preprocess/tmelt_tice/001
 pred_checkpoint_path: null
 rh_method: Bolton
-
+restart_ckpt_path: null
 
 # data 指定期間内のデータを利用。skip_modで間引く
 train_start: [1, 2] #1の2月
