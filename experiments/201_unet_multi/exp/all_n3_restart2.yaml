@@ -1,0 +1,8 @@
+defaults:
+  - all_n3@_here_ # ベースの設定ファイルを指定する
+
+restart_ckpt_path: output/experiments/201_unet_multi/all_n3_restart/checkpoints/epoch=0-step=18000.ckpt
+
+optimizer: 
+  name: Adan
+  lr: 2e-5
