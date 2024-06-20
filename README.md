@@ -35,6 +35,10 @@ gcloud storage cp -r gs://kaggle-leap/kami/train.parquet input
 gcloud storage cp -r gs://kaggle-leap/kami/valid.parquet input
 gcloud storage cp -r gs://kaggle-leap/kami/sample_submission.parquet input
 
+gcloud storage cp gs://kaggle-leap/kami/leap-atmospheric-physics-ai-climsim/sample_submission_old.csv input/leap-atmospheric-physics-ai-climsim
+gcloud storage cp gs://kaggle-leap/kami/leap-atmospheric-physics-ai-climsim/sample_submission.csv input/leap-atmospheric-physics-ai-climsim
+gcloud storage cp gs://kaggle-leap/kami/leap-atmospheric-physics-ai-climsim/test_old.csv input/leap-atmospheric-physics-ai-climsim
+gcloud storage cp gs://kaggle-leap/kami/leap-atmospheric-physics-ai-climsim/test.csv input/leap-atmospheric-physics-ai-climsim
 
 ## 特徴
 - Docker によるポータブルなKaggleと同一の環境
