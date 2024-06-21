@@ -25,20 +25,22 @@ sudo mdadm --detail --scan | sudo tee -a /etc/mdadm/mdadm.conf
 sudo update-initramfs -u
 ```
 
+
+```
 gcloud storage cp -r gs://kaggle-leap/kami/leap-atmospheric-physics-ai-climsim input
 mkdir input/make_webdataset_batch
 gcloud storage cp -r gs://kaggle-leap/kami/preprocess/make_webdataset_batch/all input/make_webdataset_batch/
-
-
-gcloud storage cp -r gs://kaggle-leap/kami/test.parquet input
 gcloud storage cp -r gs://kaggle-leap/kami/train.parquet input
 gcloud storage cp -r gs://kaggle-leap/kami/valid.parquet input
+```
+```
+gcloud storage cp -r gs://kaggle-leap/kami/test.parquet input
 gcloud storage cp -r gs://kaggle-leap/kami/sample_submission.parquet input
-
 gcloud storage cp gs://kaggle-leap/kami/leap-atmospheric-physics-ai-climsim/sample_submission_old.csv input/leap-atmospheric-physics-ai-climsim
 gcloud storage cp gs://kaggle-leap/kami/leap-atmospheric-physics-ai-climsim/sample_submission.csv input/leap-atmospheric-physics-ai-climsim
 gcloud storage cp gs://kaggle-leap/kami/leap-atmospheric-physics-ai-climsim/test_old.csv input/leap-atmospheric-physics-ai-climsim
 gcloud storage cp gs://kaggle-leap/kami/leap-atmospheric-physics-ai-climsim/test.csv input/leap-atmospheric-physics-ai-climsim
+```
 
 ## 特徴
 - Docker によるポータブルなKaggleと同一の環境
