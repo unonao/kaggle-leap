@@ -1,0 +1,17 @@
+# r2_score: 0.777796105385758
+seed: 7
+sample_submission_path: input/sample_submission.parquet
+
+exp_names:
+  - 204_diff_last/all_lr
+  - 201_unet_multi/all_n3_restart2
+  - 201_unet_multi/all_512_n3
+  - 201_unet_multi/all_384_n2
+  - 201_unet_multi/all 
+
+weights_list:
+  - [0.1, 0.1, 0.2, 0.2, 0.4]
+  - [0.1, 0.1, 0.2, 0.3, 0.3]
+  - [0.1, 0.1, 0.25, 0.25, 0.3]
+  - [0.15, 0.15, 0.2, 0.2, 0.3] # 0.7843691181965989
+

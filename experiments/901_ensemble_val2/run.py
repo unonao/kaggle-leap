@@ -97,30 +97,27 @@ def ensemble(cfg, output_path):
         for exp_name in cfg.exp.exp_names:
             gcs_path = f"gs://{cfg.dir.gcs_bucket}/{cfg.dir.gcs_base_dir}/experiments/{exp_name}/"
             with utils.trace("load pred"):
-                pred = pl.read_parquet(
+                df = pl.read_parquet(
                     gcs_path + f"{name}.parquet",
                     n_rows=N_ROWS_WHEN_DEBUG if cfg.debug else None,
-                )[:, 1:].to_numpy()
+                )
+                pred = df[:, 1:].to_numpy()
             pred_list.append(pred)
             gc.collect()
 
-        sample_submission_df = pl.read_parquet(
-            cfg.exp.sample_submission_path,
-            n_rows=N_ROWS_WHEN_DEBUG if cfg.debug else None,
-        )
         ensemble_pred = weighted_ensemble(
             pred_list, best_weights
         )  # weightはすでにかかっているのでかけない
-        df = pl.concat(
+        ensemble_df = pl.concat(
             [
-                sample_submission_df.select("sample_id"),
-                pl.from_numpy(ensemble_pred, schema=sample_submission_df.columns[1:]),
+                df.select("sample_id"),
+                pl.from_numpy(ensemble_pred, schema=df.columns[1:]),
             ],
             how="horizontal",
         )
-        df.write_parquet(output_path / f"{name}.parquet")
-        print(df)
-        del pred_list, df
+        ensemble_df.write_parquet(output_path / f"{name}.parquet")
+        print(ensemble_df)
+        del pred_list, ensemble_df
         gc.collect()
 
 
