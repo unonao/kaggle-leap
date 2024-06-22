@@ -5,7 +5,7 @@ scheduler:
   name: ReduceLROnPlateau
   mode: max
   factor: 0.2
-  patience: 1
+  patience: 2
   threshold: 1e-4
   threshold_mode: abs
   cooldown: 1
