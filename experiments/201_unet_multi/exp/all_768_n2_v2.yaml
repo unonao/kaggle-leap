@@ -13,7 +13,7 @@ scheduler:
 
 optimizer: 
   name: Adan
-  lr: 7e-4
+  lr: 3e-4
 
 train_data_skip_mod: 1
 valid_data_skip_mod: 14
