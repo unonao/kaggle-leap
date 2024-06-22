@@ -426,10 +426,16 @@ class Scaler:
 
     def scale_output(self, x, y):
         # subtaskとして360だけの変化後の値を予測する
-        y_subtask = x[:, :360] + y[:, :360] * 1200
+        y_subtask = (x[:, 120:180] + y[:, 120:180] * 1200) + (
+            x[:, 180:240] + y[:, 180:240] * 1200
+        )
         y_subtask = (
-            y_subtask - self.feat_mean_dict["base"][:360]
-        ) / self.feat_std_dict["base"][:360]
+            y_subtask
+            - (
+                self.feat_mean_dict["base"][120:180]
+                + self.feat_mean_dict["base"][180:240]
+            )
+        ) / (self.feat_std_dict["base"][120:180] + self.feat_std_dict["base"][180:240])
 
         y_subtask = np.clip(
             y_subtask,
@@ -452,9 +458,10 @@ class Scaler:
         return y
 
     def inv_scale_output_sub(self, y_subtask):
-        y_subtask = (
-            y_subtask * self.feat_std_dict["base"][:360]
-            + self.feat_mean_dict["base"][:360]
+        y_subtask = y_subtask * (
+            self.feat_std_dict["base"][120:180] + self.feat_std_dict["base"][180:240]
+        ) + (
+            self.feat_mean_dict["base"][120:180] + self.feat_mean_dict["base"][180:240]
         )
 
         return y_subtask
@@ -1030,7 +1037,7 @@ class LeapModel(nn.Module):
         in_channels += embedding_dim
         self.head = MLP(
             in_channels,
-            output_hidden_sizes + [18],
+            output_hidden_sizes + [13],
             use_layer_norm=use_output_layer_norm,
         )
 
@@ -1117,7 +1124,7 @@ class LeapModel(nn.Module):
         out_q3 = out[:, :, 6:7].exp() - out[:, :, 7:8].exp()
         out_u = out[:, :, 8:9].exp() - out[:, :, 9:10].exp()
         out_v = out[:, :, 10:11].exp() - out[:, :, 11:12].exp()
-        subout = out[:, :, 12:18]  # 360個分のsubtaskの予測
+        subout = out[:, :, 12:13]  # 60個分のsubtaskの予測
 
         out = torch.cat(
             [
