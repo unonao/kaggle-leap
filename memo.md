@@ -1,5 +1,5 @@
 # メモ
 
+python experiments/213_transformer_last/run.py exp=small 
 
-python experiments/209_sub_cloud_water/run.py exp=small 'exp.modes=[valid2]'
-python experiments/212_split_three_height/run.py exp=small_n2
+python experiments/207_last_height_embedding/run.py exp=all_cos
