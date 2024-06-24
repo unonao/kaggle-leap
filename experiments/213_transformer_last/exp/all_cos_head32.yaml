@@ -17,6 +17,7 @@ max_epochs: 3
 early_stopping_patience: 20
 
 
+
 model:
   same_height_hidden_sizes: [128, 128]
   output_hidden_sizes: [128, 128]
@@ -31,5 +32,5 @@ model:
   n_base_channels: 512
   t_nhead: 32
   t_num_layers: 1
-  t_dim_feedforward: 2048
+  t_dim_feedforward: 1024
   t_dropout: 0.0
