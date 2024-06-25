@@ -1,0 +1,21 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+
+
+model:
+  same_height_hidden_sizes: [128, 128]
+  output_hidden_sizes: [128, 128]
+  use_input_layer_norm: False
+  use_output_layer_norm: True
+  use_batch_norm: True
+  embedding_dim: 8
+  categorical_embedding_dim: 8
+  n_unet: 2
+  depth: 2
+  dropout: 0.0
+  n_base_channels: 512
+  t_nhead: 8
+  t_num_layers: 1
+  t_dim_feedforward: 1024
+  t_dropout: 0.0

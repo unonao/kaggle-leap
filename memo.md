@@ -1,3 +1,6 @@
 # メモ
 
-python experiments/217_fix_transformer_leak/run.py exp=small_head256
+python experiments/220_cnn_params/run.py exp=small
+python experiments/220_cnn_params/run.py exp=small_001
+python experiments/220_cnn_params/run.py exp=small_002
+python experiments/220_cnn_params/run.py exp=small_layers8
