@@ -1,0 +1,8 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+
+
+model:
+  layers: [1, 2, 2]
+  kernel_sizes: [5, 3, 1]
