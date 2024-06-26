@@ -1,0 +1,10 @@
+# r2_score: 0.777796105385758
+seed: 7
+sample_submission_path: input/sample_submission.parquet
+n_trials: 20
+exp_names:
+  - 201_unet_multi/all_384_n2 # CV 0.7801 
+  - 201_unet_multi/all # CV 0.7815
+  - 211_simple_split_head/all_cos # CV 0.7813
+
+# best_weights: [0.13050920107242847, 0.40503050468273744, 0.46446029424483415], best_score: 0.7844936923913413
