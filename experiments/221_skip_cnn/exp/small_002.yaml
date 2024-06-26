@@ -5,4 +5,4 @@ defaults:
 
 model:
   layers: [2, 2]
-  kernel_sizes: [5, 3]
+  kernel_sizes: [3, 3]
