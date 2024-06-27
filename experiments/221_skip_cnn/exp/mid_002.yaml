@@ -10,5 +10,5 @@ max_epochs: 1
 early_stopping_patience: 10
 
 model:
-  layers: [2, 2, 2]
-  kernel_sizes: [3, 3, 3]
+  layers: [2, 2]
+  kernel_sizes: [3, 3]
