@@ -1,0 +1,14 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+
+train_data_skip_mod: 5
+valid_data_skip_mod: 14
+additional_data_skip_mod: 5
+val_check_interval: 9000
+max_epochs: 2
+early_stopping_patience: 20
+
+model:
+  layers: [2, 2, 2]
+  kernel_sizes: [3, 3, 3]
