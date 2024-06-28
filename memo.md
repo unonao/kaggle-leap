@@ -1,3 +1,3 @@
 # メモ
 
- python experiments/217_fix_transformer_leak/run.py exp=mid2_head64_restart
+ python experiments/221_skip_cnn/run.py exp=mid_003_restart

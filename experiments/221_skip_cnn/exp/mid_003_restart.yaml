@@ -1,0 +1,10 @@
+defaults:
+  - mid_003@_here_ # ベースの設定ファイルを指定する
+
+
+restart_ckpt_path: output/experiments/221_skip_cnn/mid_003/checkpoints/best_model.ckpt
+
+optimizer: 
+  name: Adan
+  lr: 1e-4
+max_epochs: 1
