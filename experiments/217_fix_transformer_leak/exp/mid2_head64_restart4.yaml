@@ -1,0 +1,9 @@
+defaults:
+  - mid2_head64@_here_ 
+
+restart_ckpt_path: output/experiments/217_fix_transformer_leak/mid2_head64/checkpoints/best_model.ckpt
+
+optimizer: 
+  name: Adan
+  lr: 2e-4
+max_epochs: 2
