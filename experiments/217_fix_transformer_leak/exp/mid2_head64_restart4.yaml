@@ -7,3 +7,4 @@ optimizer:
   name: Adan
   lr: 2e-4
 max_epochs: 2
+val_check_interval: 16400 # 196992ファイル、12x2回評価
