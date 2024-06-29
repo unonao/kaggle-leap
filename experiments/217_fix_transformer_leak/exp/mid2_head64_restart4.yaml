@@ -1,0 +1,10 @@
+defaults:
+  - mid2_head64@_here_ 
+
+restart_ckpt_path: output/experiments/217_fix_transformer_leak/mid2_head64/checkpoints/best_model.ckpt
+
+optimizer: 
+  name: Adan
+  lr: 2e-4
+max_epochs: 2
+val_check_interval: 16400 # 196992ファイル、12x2回評価
