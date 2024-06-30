@@ -1,0 +1,12 @@
+# r2_score: 0.777796105385758
+seed: 7
+sample_submission_path: input/sample_submission.parquet
+n_trials: 25
+exp_names:
+  - 201_unet_multi/all_384_n2 # CV 0.7801 
+  - 201_unet_multi/all # CV 0.7815
+  - 211_simple_split_head/all_cos # CV 0.7813
+  - 217_fix_transformer_leak/all_cos_head64 # CV 0.7817
+  - 217_fix_transformer_leak/all_cos_head64_n4 # CV 0.7828
+  - 221_skip_cnn/mid_003_restart # CV 0.78105
+# best_weights: [0.0895184931850408, 0.1991334465653705, 0.18296205916904146, 0.1891119716771994, 0.25918258104619585, 0.0800914483571519], best_score: 0.7863427799967525  
