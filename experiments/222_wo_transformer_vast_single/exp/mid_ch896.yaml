@@ -12,4 +12,4 @@ early_stopping_patience: 10
 model:
   layers: [2]
   kernel_sizes: [3]
-  n_base_channels: 1024
+  n_base_channels: 896

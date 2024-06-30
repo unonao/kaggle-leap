@@ -18,7 +18,6 @@ import polars as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import wandb
 import webdataset as wds
 import xarray as xr
 from adan import Adan
@@ -46,6 +45,8 @@ from timm.utils import ModelEmaV2
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
+
+import wandb
 
 sys.path.append(".")
 import utils
@@ -1454,7 +1455,7 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
         num_sanity_val_steps=0,
         # sync_batchnorm=True,
         val_check_interval=cfg.exp.val_check_interval,
-        devices=find_usable_cuda_devices(1),
+        devices=cfg.exp.devices,
     )
     trainer.fit(model, dm, ckpt_path=cfg.exp.resume_ckpt_path)
 

@@ -22,3 +22,5 @@ model:
   layers: [2]
   kernel_sizes: [3]
   n_base_channels: 1024
+
+devices: [1]
