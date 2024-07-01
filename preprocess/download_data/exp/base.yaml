@@ -1,0 +1,6 @@
+seed: 7
+
+break_n_months: 1
+repo_id: LEAP/ClimSim_low-res
+
+save_dir: input/ClimSim_low-res
