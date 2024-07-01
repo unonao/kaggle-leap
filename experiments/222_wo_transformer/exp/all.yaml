@@ -17,8 +17,6 @@ max_epochs: 3
 early_stopping_patience: 20
 
 
-
 model:
-  layers: [2, 2, 2]
-  kernel_sizes: [3, 3, 3]
-  t_num_layers: 4
+  layers: [2, 2]
+  kernel_sizes: [3, 7]
