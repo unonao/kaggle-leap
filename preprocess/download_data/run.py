@@ -548,9 +548,9 @@ def make_webdataset(cfg: DictConfig, exp_name) -> None:
     )
     """
     month_dirs = (
-        [f"train/0007-{str(m).zfill(2)}" for m in range(2, 13)]
-        + [f"train/000{y}-{str(m).zfill(2)}" for y in range(8, 9) for m in range(1, 13)]
-        + ["train/0009-01"]
+        [f"train/0005-{str(m).zfill(2)}" for m in range(2, 13)]
+        + [f"train/000{y}-{str(m).zfill(2)}" for y in range(6, 7) for m in range(1, 13)]
+        + ["train/0007-01"]
     )
     if cfg.exp.break_n_months:
         month_dirs = month_dirs[: cfg.exp.break_n_months]
