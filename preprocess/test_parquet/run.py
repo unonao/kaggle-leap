@@ -22,13 +22,24 @@ def main(cfg: DictConfig) -> None:
     test_df = pl.read_csv(
         Path(cfg.dir.input_dir) / "leap-atmospheric-physics-ai-climsim/test.csv"
     )
+    test_old_df = pl.read_csv(
+        Path(cfg.dir.input_dir) / "leap-atmospheric-physics-ai-climsim/test_old.csv"
+    )
     sample_submission_df = pl.read_csv(
         Path(cfg.dir.input_dir)
         / "leap-atmospheric-physics-ai-climsim/sample_submission.csv"
     )
+    sample_submission_old_df = pl.read_csv(
+        Path(cfg.dir.input_dir)
+        / "leap-atmospheric-physics-ai-climsim/sample_submission_old.csv"
+    )
 
     test_df.write_parquet(output_path / "test.parquet")
+    test_old_df.write_parquet(output_path / "test_old.parquet")
     sample_submission_df.write_parquet(output_path / "sample_submission.parquet")
+    sample_submission_old_df.write_parquet(
+        output_path / "sample_submission_old.parquet"
+    )
 
 
 if __name__ == "__main__":
