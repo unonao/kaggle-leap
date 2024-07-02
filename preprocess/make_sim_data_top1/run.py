@@ -184,21 +184,13 @@ def make_sim_data(cfg: DictConfig) -> None:
                 original_x = base_array[start_ri:end_ri, :556]
                 original_y = base_array[start_ri:end_ri, 556:]
 
-                sim_x = [
-                    old_array[top_k_similar[start_ri:end_ri, i], :556]
-                    for i in range(cfg.exp.topk)
-                ]
-
-                is_in_bools = df_similar[start_ri:end_ri][
-                    [f"is_in_next{i}" for i in [0, 6, 12, 18, 24]]
-                ]
+                sim_x = old_array[top_k_similar[start_ri:end_ri, 0], :556]
 
                 np.savez(
                     save_dir / f"id{start_ri}.npz",
                     x=original_x,
                     y=original_y,
                     sim_x=sim_x,
-                    is_in_bools=is_in_bools,
                 )
 
 
