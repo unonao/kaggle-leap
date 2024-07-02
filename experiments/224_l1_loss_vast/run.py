@@ -1489,14 +1489,15 @@ def predict_val2(cfg: DictConfig, output_path: Path) -> None:
     original_xs = []
     preds = []
     labels = []
-    model = model.to("cuda")
+    device = f"cuda:{cfg.exp.devices[0]}"
+    model = model.to(device)
     model.eval()
     for x, x_cat, _, _, original_x, original_y in tqdm(dataloader):
         x, x_cat, original_x, original_y = (
-            x.to("cuda"),
-            x_cat.to("cuda"),
-            original_x.to("cuda"),
-            original_y.to("cuda"),
+            x.to(device),
+            x_cat.to(device),
+            original_x.to(device),
+            original_y.to(device),
         )
         x = torch.flatten(x, start_dim=0, end_dim=1)
         x_cat = torch.flatten(x_cat, start_dim=0, end_dim=1)
@@ -1595,11 +1596,12 @@ def predict_test(cfg: DictConfig, output_path: Path) -> None:
     dataloader, test_df = dm.test_dataloader()
     original_xs = []
     preds = []
-    model = model.to("cuda")
+    device = f"cuda:{cfg.exp.devices[0]}"
+    model = model.to(device)
     model.eval()
     for x, x_cat, original_x in tqdm(dataloader):
-        x = x.to("cuda")
-        x_cat = x_cat.to("cuda")
+        x = x.to(device)
+        x_cat = x_cat.to(device)
         # webdatasetとは違い、batchでの読み出しではないのでflattenは必要ない
         with torch.no_grad():
             out = model(x.to(torch_dtype), x_cat.to(torch.long))
