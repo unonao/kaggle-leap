@@ -8,3 +8,5 @@ exp_names:
   - 217_fix_transformer_leak/all_cos_head64 # CV 0.7817
   - 217_fix_transformer_leak/all_cos_head64_n4 # CV 0.7828
   - 222_wo_transformer/all # 0.7839
+
+# best_weights: [0.19121636330991074, 0.15034505222901623, 0.11032919585066941, 0.23431084284243806, 0.3137985457679654], best_score: 0.7873218256437053

@@ -4,5 +4,6 @@ defaults:
 
 
 model:
+  n_base_channels: 256
   layers: [1]
   kernel_sizes: [3]
