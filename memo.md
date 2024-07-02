@@ -30,3 +30,8 @@ gcloud storage cp -r output/experiments/222_wo_transformer_vast_single gs://kagg
 ## command
 python experiments/224_l1_loss/run.py exp=all
 python experiments/222_wo_transformer/run.py exp=all
+
+
+python experiments/601_attention/run.py exp=small
+python experiments/601_attention/run.py exp=small_no_hack
+python experiments/601_attention/run.py exp=mid
