@@ -491,10 +491,10 @@ def dowload_month(cfg: DictConfig, month_dir: str, data_utils: DataUtils) -> Non
             break
         except Exception as e:
             print(f"ConnectionError: {e}. Retrying in 1s...")
-            if retry_count == 3:
+            if retry_count == 10:
                 raise e
             retry_count += 1
-            time.sleep(retry_count)
+            time.sleep(retry_count * 2)
 
     save_dir = Path(cfg.exp.save_dir) / str(month_dir)
     save_dir.mkdir(exist_ok=True, parents=True)
@@ -548,8 +548,8 @@ def make_webdataset(cfg: DictConfig, exp_name) -> None:
     )
     """
     month_dirs = (
-        [f"train/0001-{str(m).zfill(2)}" for m in range(7, 13)]
-        + [f"train/000{y}-{str(m).zfill(2)}" for y in range(2, 5) for m in range(1, 13)]
+        [f"train/0002-{str(m).zfill(2)}" for m in range(4, 13)]
+        + [f"train/000{y}-{str(m).zfill(2)}" for y in range(3, 5) for m in range(1, 13)]
         + ["train/0005-01"]
     )
     if cfg.exp.break_n_months:
