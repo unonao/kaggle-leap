@@ -1,6 +1,6 @@
 seed: 7
 
-year_index: [2] # 0,1,2,3
+year_index: [0] # 0,1,2,3
 start_index: [0] # 23まで
 topk: 3
 chunk_size: 100

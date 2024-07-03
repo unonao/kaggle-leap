@@ -166,19 +166,28 @@ def make_sim_data(cfg: DictConfig) -> None:
                         pl.col("old_row_index")
                         .list.contains(pl.col("row_index") + 384 * i)
                         .alias(f"is_in_next{i}")
-                        for i in [0, 6, 12, 18, 24]
+                        for i in [-12, -6, 0, 6, 12]
                     ]
                 )
                 .with_columns(
                     [
                         pl.col("old_row_index")
-                        .list.head(k)
-                        .contains(pl.col("row_index") + 384 * i)
+                        .list.slice(k - 1, 1)
+                        .list.contains(pl.col("row_index") + 384 * i)
                         .alias(f"is_in_top{k}_next{i}")
-                        for i in [0, 6, 12, 18, 24]
+                        for i in [-12, -6, 0, 6, 12]
                         for k in [1, 2, 3]
                     ]
                 )
+            )
+            print(
+                df_similar[
+                    [
+                        f"is_in_top{k}_next{i}"
+                        for i in [-12, -6, 0, 6, 12]
+                        for k in [1, 2, 3]
+                    ]
+                ].sum()
             )
             print(
                 "is_in_next6:",
@@ -203,11 +212,11 @@ def make_sim_data(cfg: DictConfig) -> None:
                 ]
 
                 is_in_bools = df_similar[start_ri:end_ri][
-                    [f"is_in_next{i}" for i in [0, 6, 12, 18, 24]]
+                    [f"is_in_next{i}" for i in [-12, -6, 0, 6, 12]]
                 ]
                 is_in_bools_each = [
                     df_similar[start_ri:end_ri][
-                        [f"is_in_top{k}_next{i}" for i in [0, 6, 12, 18, 24]]
+                        [f"is_in_top{k}_next{i}" for i in [-12, -6, 0, 6, 12]]
                     ]
                     for k in [1, 2, 3]
                 ]
