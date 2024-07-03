@@ -143,29 +143,42 @@ def make_sim_data(cfg: DictConfig) -> None:
                 device=device,
             )
 
-            df_similar = df.with_columns(
-                [
-                    pl.Series(
-                        "old_index",
-                        values=(top_k_similar.numpy()),
-                    ),
-                    pl.Series(
-                        "old_file_index",
-                        values=(top_k_similar.numpy() // 384) * 30,
-                    ),
-                    pl.Series(
-                        "old_row_index",
-                        values=(top_k_similar.numpy() // 384 * 30 * 384)
-                        + (top_k_similar.numpy() % 384),
-                    ),
-                ]
-            ).with_columns(
-                [
-                    pl.col("old_row_index")
-                    .list.contains(pl.col("row_index") + 384 * i)
-                    .alias(f"is_in_next{i}")
-                    for i in [0, 6, 12, 18, 24]
-                ]
+            df_similar = (
+                df.with_columns(
+                    [
+                        pl.Series(
+                            "old_index",
+                            values=(top_k_similar.numpy()),
+                        ),
+                        pl.Series(
+                            "old_file_index",
+                            values=(top_k_similar.numpy() // 384) * 30,
+                        ),
+                        pl.Series(
+                            "old_row_index",
+                            values=(top_k_similar.numpy() // 384 * 30 * 384)
+                            + (top_k_similar.numpy() % 384),
+                        ),
+                    ]
+                )
+                .with_columns(
+                    [
+                        pl.col("old_row_index")
+                        .list.contains(pl.col("row_index") + 384 * i)
+                        .alias(f"is_in_next{i}")
+                        for i in [0, 6, 12, 18, 24]
+                    ]
+                )
+                .with_columns(
+                    [
+                        pl.col("old_row_index")
+                        .list.head(k)
+                        .contains(pl.col("row_index") + 384 * i)
+                        .alias(f"is_in_top{k}_next{i}")
+                        for i in [0, 6, 12, 18, 24]
+                        for k in [1, 2, 3]
+                    ]
+                )
             )
             print(
                 "is_in_next6:",
@@ -192,6 +205,12 @@ def make_sim_data(cfg: DictConfig) -> None:
                 is_in_bools = df_similar[start_ri:end_ri][
                     [f"is_in_next{i}" for i in [0, 6, 12, 18, 24]]
                 ]
+                is_in_bools_each = [
+                    df_similar[start_ri:end_ri][
+                        [f"is_in_top{k}_next{i}" for i in [0, 6, 12, 18, 24]]
+                    ]
+                    for k in [1, 2, 3]
+                ]
 
                 np.savez(
                     save_dir / f"id{start_ri}.npz",
@@ -199,6 +218,7 @@ def make_sim_data(cfg: DictConfig) -> None:
                     y=original_y,
                     sim_x=sim_x,
                     is_in_bools=is_in_bools,
+                    is_in_bools_each=is_in_bools_each,
                 )
 
 

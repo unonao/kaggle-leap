@@ -1,0 +1,11 @@
+# r2_score: 0.777796105385758
+seed: 7
+sample_submission_path: input/sample_submission.parquet
+n_trials: 25
+exp_names:
+  - 222_wo_transformer_vast_single/all_768 # cv  0.7830
+  - 201_unet_multi/all # CV 0.7815
+  - 217_fix_transformer_leak/all_cos_head64 # CV 0.7817
+  - 217_fix_transformer_leak/all_cos_head64_n4 # CV 0.7828
+  - 222_wo_transformer/all # 0.7839
+# best_weights: [0.2163084427014653, 0.09742882805157645, 0.15240893589065543, 0.2800273100532105, 0.25382648330309243], best_score: 0.7873613577166177
