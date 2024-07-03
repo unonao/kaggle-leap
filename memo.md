@@ -28,10 +28,5 @@ gcs_base_dir: kami
 gcloud storage cp -r output/experiments/222_wo_transformer_vast_single gs://kaggle-leap/experiments
 
 ## command
-python experiments/224_l1_loss/run.py exp=all
-python experiments/222_wo_transformer/run.py exp=all
-
-
-python experiments/601_attention/run.py exp=small
-python experiments/601_attention/run.py exp=small_no_hack
-python experiments/601_attention/run.py exp=mid
+python preprocess/make_sim_data/run.py exp=year_1
+python experiments/605_subtask_coef/run.py exp=mid_001

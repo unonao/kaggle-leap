@@ -1,0 +1,15 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+
+# data 指定期間内のデータを利用。skip_modで間引く
+train_years_index: [0,2,3]
+valid_year_index: 0
+
+train_data_skip_mod: 9
+valid_data_skip_mod: 7
+
+model:
+  n_base_channels: 256
+  layers: [1]
+  kernel_sizes: [3]
