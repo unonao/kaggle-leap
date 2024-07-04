@@ -2,6 +2,8 @@ defaults:
   - base@_here_ # ベースの設定ファイルを指定する
 
 
+train_data_skip_mod: 9
+valid_data_skip_mod: 24
 
 model:
   n_base_channels: 256

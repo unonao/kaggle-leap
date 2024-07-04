@@ -1075,7 +1075,7 @@ class LeapLightningModule(LightningModule):
         self.scaler = Scaler(cfg)
         # self.loss_fc = nn.MSELoss()  # Using MSE for regression
         self.loss_fc = nn.L1Loss()
-        self.bceloss = nn.BCEWithLogitsLoss()
+        # self.bceloss = nn.BCEWithLogitsLoss()
         self.model_ema = None
         if self.cfg.exp.ema.use_ema:
             print("Using EMA")
@@ -1129,7 +1129,7 @@ class LeapLightningModule(LightningModule):
             out_masked[:, self.use_cols_index], y_masked[:, self.use_cols_index]
         )
 
-        loss += self.bceloss(out2, top1_is_in_bools) * self.cfg.exp.bce_weight
+        # loss += self.bceloss(out2, top1_is_in_bools) * self.cfg.exp.bce_weight
 
         self.log(
             f"{mode}_loss",
