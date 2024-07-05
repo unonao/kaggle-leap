@@ -16,6 +16,7 @@ val_check_interval: 18000
 max_epochs: 3
 early_stopping_patience: 20
 
+l1_beta: 0.5
 
 model:
   layers: [2, 2]
