@@ -9,9 +9,7 @@ val_check_interval: 8200 # 196992ファイル、49248バッチ、6回評価
 max_epochs: 1
 early_stopping_patience: 10
 
-optimizer: 
-  name: Adan
-  lr: 1e-3
+l1_beta: 2.0
   
 model:
   layers: [1, 1]

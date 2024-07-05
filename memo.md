@@ -29,4 +29,4 @@ gcloud storage cp -r output/experiments/222_wo_transformer_vast_single gs://kagg
 
 ## command
 python preprocess/make_sim_data/run.py exp=year_1
-python experiments/605_subtask_coef/run.py exp=mid_001
+python experiments/225_smoothl1_loss/run.py exp=mid_001
