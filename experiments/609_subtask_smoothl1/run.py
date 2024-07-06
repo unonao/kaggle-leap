@@ -541,11 +541,15 @@ class LeapLightningDataModule(LightningDataModule):
             original_y = data["y"]
             top1_sim_x = data["sim_x"][0]
             top1_is_in_bools = data["is_in_bools_each"][0]
-            # 全部falseの時は最後にtrue, それ以外は最後にfalseを追加
-            top1_is_in_bools = np.append(top1_is_in_bools, False)
-            if np.all(top1_is_in_bools == False):  # noqa: E712
-                top1_is_in_bools[-1] = True
-            sub_target = torch.argmax(top1_is_in_bools)
+
+            sub_target_array = np.zeros(
+                (top1_is_in_bools.shape[0], top1_is_in_bools.shape[1] + 1),
+                dtype=np.int64,
+            )
+            sub_target_array[:, :5] = top1_is_in_bools.astype(np.int64)
+            # 横が全部０なら最後を1
+            sub_target_array[:, 5] = 1 - sub_target_array[:, :5].sum(axis=1)
+            sub_target = torch.argmax(torch.from_numpy(sub_target_array), dim=1)
 
             x, x_cat, y, filter_bool = self.scaler.filter_and_scale(
                 original_x, original_y
@@ -868,7 +872,11 @@ class DiffClassifier(nn.Sequential):
             )
         flatten = nn.Flatten()
         dropout = nn.Dropout(p=dropout, inplace=True) if dropout else nn.Identity()
-        linear = MLP(in_channels * 60, in_channels * 15, out_nums, bias=True)
+        linear = MLP(
+            in_channels * 60,
+            hidden_sizes=[in_channels * 15, out_nums],
+            use_layer_norm=False,
+        )
         super().__init__(flatten, dropout, linear)
 
 
@@ -906,7 +914,7 @@ class LeapModel(nn.Module):
 
         self.diff_extractor = MLP(
             previous_size * 2,
-            [previous_size, previous_size // 2],
+            [previous_size, previous_size],
             use_layer_norm=use_input_layer_norm,
         )
         self.classifier = DiffClassifier(
