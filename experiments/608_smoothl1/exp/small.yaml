@@ -2,14 +2,11 @@ defaults:
   - base@_here_ # ベースの設定ファイルを指定する
 
 
-train_data_skip_mod: 9
-valid_data_skip_mod: 24
+optimizer: 
+  name: Adan
+  lr: 2e-3
 
 model:
   n_base_channels: 256
   layers: [1]
   kernel_sizes: [3]
-
-model:
-  layers: [2, 2]
-  kernel_sizes: [3, 3]

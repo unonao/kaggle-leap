@@ -9,7 +9,7 @@ train_data_skip_mod: 1
 valid_data_skip_mod: 24
 
 val_check_interval: 13139 # 105120ファイルの1/8
-max_epochs: 3
+max_epochs: 4
 early_stopping_patience: 20
 
 
