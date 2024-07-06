@@ -1,0 +1,18 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+scheduler:
+  name: CosineAnnealingWarmRestarts
+  use_one_epoch_warmup: True
+
+train_data_skip_mod: 1
+valid_data_skip_mod: 24
+
+val_check_interval: 13139 # 105120ファイルの1/8
+max_epochs: 4
+early_stopping_patience: 20
+
+
+model:
+  layers: [2, 2]
+  kernel_sizes: [3, 7]
