@@ -12,6 +12,13 @@ pip install hydra-core pandas polars webdataset xarray scipy google-cloud-storag
 python3 -m pip install git+https://github.com/sail-sg/Adan.git  
 pip install -U rich
 python3 -m pip install papermill
+pip install torch_geometric
+
+mkdir output/preprocess
+gcloud storage cp -r gs://kaggle-leap/kami/preprocess/normalize_007_diff_feat/ output/preprocess
+gcloud storage cp -r gs://kaggle-leap/kami/preprocess/normalize_009_rate_feat/ output/preprocess
+gcloud storage cp -r gs://kaggle-leap/kami/preprocess/tmelt_tice/ output/preprocess
+gcloud storage cp gs://kaggle-leap/kami/118_valid_pred_ch384_6_year_submission.parquet input
 ```
 
 local.yaml
