@@ -567,10 +567,10 @@ class LeapLightningDataModule(LightningDataModule):
             # 50%の確率で6を選ぶ
             if np.random.rand() < 0.5:
                 append_path_index = path_index + 6
-                y_class = np.zeros(original_x.shape[0], dtype=np.int64)
+                y_class = np.ones(original_x.shape[0], dtype=np.int64)
             else:
                 append_path_index = path_index + np.random.choice([-18, -66, 78])
-                y_class = np.ones(original_x.shape[0], dtype=np.int64)
+                y_class = np.zeros(original_x.shape[0], dtype=np.int64)
 
             # 5%の確率、もしくは長さが超えた時にランダムに選ぶ
             if (
@@ -579,7 +579,7 @@ class LeapLightningDataModule(LightningDataModule):
                 or append_path_index < 0
             ):
                 append_path_index = np.random.choice(len(self.file_paths))
-                y_class = np.ones(original_x.shape[0], dtype=np.int64)
+                y_class = np.zeros(original_x.shape[0], dtype=np.int64)
 
             append_data = np.load(self.file_paths[append_path_index])
             top1_sim_x = append_data[:, :556]
@@ -971,10 +971,11 @@ class LeapLightningModule(LightningModule):
         for threshold in thresholds:
             y_pred = (valid_preds[:, 1] > threshold).astype(np.int64)
             # リコールと精度を計算
+            num_cand = np.sum(y_pred)
             precision = precision_score(valid_y_class, y_pred)
             recall = recall_score(valid_y_class, y_pred)
             print(
-                f"Threshold: {threshold:.2f}, Precision: {precision:.2f}, Recall: {recall:.2f}"
+                f"Threshold: {threshold:.2f}, Num:{num_cand}, Precision: {precision:.4f}, Recall: {recall:.4f}"
             )
 
         self.valid_preds = []
