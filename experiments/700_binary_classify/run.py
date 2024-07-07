@@ -1087,7 +1087,7 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
         dirpath=output_path / "checkpoints",
         verbose=True,
         monitor=monitor,
-        mode="max",
+        mode="min",
         save_top_k=3,
         save_last=False,
         enable_version_counter=False,
@@ -1098,7 +1098,7 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
     early_stopping = EarlyStopping(
         monitor=monitor,
         patience=cfg.exp.early_stopping_patience,
-        mode="max",
+        mode="min",
     )
     if cfg.debug:
         cfg.exp.max_epochs = 2
@@ -1182,13 +1182,13 @@ def predict_val2(cfg: DictConfig, output_path: Path) -> None:
             ).softmax(dim=1)
 
         preds.append(out.cpu().to(torch.float64))
-        labels.append(y_class.cpu())
+        labels.append(y_class.flatten().cpu())
         if cfg.debug:
             break
 
     with utils.trace("save predict"):
         preds = np.concatenate(preds, axis=0)
-        labels = np.concatenate(labels, axis=0)
+        labels = np.concatenate(labels)
 
         original_predict_df = pd.DataFrame(
             preds, columns=[i for i in range(preds.shape[1])]
@@ -1198,9 +1198,7 @@ def predict_val2(cfg: DictConfig, output_path: Path) -> None:
         del original_predict_df
         gc.collect()
 
-        original_label_df = pd.DataFrame(
-            labels, columns=[i for i in range(labels.shape[1])]
-        ).reset_index()
+        original_label_df = pd.DataFrame(labels, columns=[1]).reset_index()
         original_label_df.to_parquet(output_path / "val2_label.parquet")
         print(original_label_df)
         del original_label_df
