@@ -967,7 +967,7 @@ class LeapLightningModule(LightningModule):
         valid_y_class = np.concatenate(self.valid_y_class, axis=0).astype(np.float64)
 
         # 閾値ごとの 1と予測した数と 1についての precision, recall を計算
-        thresholds = [0.5, 0.7, 0.9, 0.95]
+        thresholds = [0.5, 0.7, 0.9, 0.95, 0.99]
         for threshold in thresholds:
             y_pred = (valid_preds[:, 1] > threshold).astype(np.int64)
             # リコールと精度を計算
