@@ -569,20 +569,26 @@ class LeapLightningDataModule(LightningDataModule):
                 append_path_index = path_index + 6
                 y_class = np.zeros(original_x.shape[0], dtype=np.int64)
             else:
-                append_path_index = path_index + np.random.choice([-18, -66, 78])
-                y_class = np.ones(original_x.shape[0], dtype=np.int64)
+                use_index = np.random.choice([0, 1, 2])
+                classes = [-18, -66, 78]
+                append_path_index = path_index + classes[use_index]
+                y_class = np.ones(original_x.shape[0], dtype=np.int64) * (use_index + 1)
 
-            # 5%の確率、もしくは長さが超えた時にランダムに選ぶ
+            # 10%の確率、もしくは長さが超えた時にランダムに選ぶ
             if (
-                np.random.rand() < 0.05
+                np.random.rand() < 0.10
                 or append_path_index >= len(self.file_paths)
                 or append_path_index < 0
             ):
                 append_path_index = np.random.choice(len(self.file_paths))
-                y_class = np.ones(original_x.shape[0], dtype=np.int64)
-
-            append_data = np.load(self.file_paths[append_path_index])
-            top1_sim_x = append_data[:, :556]
+                y_class = np.ones(original_x.shape[0], dtype=np.int64) * 4
+                append_data = np.load(self.file_paths[append_path_index])
+                top1_sim_x = append_data[:, :556]
+                if np.random.rand() < 0.5:
+                    np.random.shuffle(top1_sim_x)
+            else:
+                append_data = np.load(self.file_paths[append_path_index])
+                top1_sim_x = append_data[:, :556]
 
             x, x_cat, y, filter_bool = self.scaler.filter_and_scale(
                 original_x, original_y
@@ -615,7 +621,7 @@ class LeapLightningDataModule(LightningDataModule):
             original_x = data["x"]
             original_y = data["y"]
             top1_sim_x = data["top1"]
-            y_class = data["is_next"].astype(np.int64)
+            y_class = data["y_class"].astype(np.int64)
 
             x, x_cat, y, filter_bool = self.scaler.filter_and_scale(
                 original_x, original_y
@@ -751,7 +757,7 @@ class LeapModel(nn.Module):
         input_dim = same_height_hidden_sizes[-1] * 60
         self.head = MLP(
             input_dim,
-            [input_dim // (2**i) for i in range(layers)] + [2],
+            [input_dim // (2**i) for i in range(layers)] + [5],
             use_layer_norm=use_output_layer_norm,
         )
 
@@ -939,7 +945,6 @@ class LeapLightningModule(LightningModule):
             logger=True,
             prog_bar=True,
         )
-
         self.valid_preds.append(
             out.softmax(dim=1).detach().cpu().to(torch.float64).numpy()
         )
@@ -970,15 +975,23 @@ class LeapLightningModule(LightningModule):
         valid_y_class = np.concatenate(self.valid_y_class, axis=0).astype(np.float64)
 
         # 閾値ごとの 1と予測した数と 1についての precision, recall を計算
-        thresholds = [0.5, 0.7, 0.9, 0.95, 0.99]
+        thresholds = [0.5, 0.7, 0.9, 0.99, 0.999, 0.9999, 0.99999]
         for threshold in thresholds:
             y_pred = (valid_preds[:, 0] > threshold).astype(np.int64)
             # リコールと精度を計算
             num_cand = np.sum(y_pred)
-            precision = precision_score(valid_y_class, y_pred)
-            recall = recall_score(valid_y_class, y_pred)
+            precision = precision_score(valid_y_class == 0, y_pred)
+            recall = recall_score(valid_y_class == 0, y_pred)
             print(
-                f"Threshold: {threshold:.2f}, Num:{num_cand}, Precision: {precision:.4f}, Recall: {recall:.4f}"
+                f"Threshold: {threshold:.5f}, Num:{num_cand}, Precision: {precision:.5f}, Recall: {recall:.5f}"
+            )
+            self.log(
+                f"valid_precision_recall_{threshold:.5f}",
+                precision * recall,
+                on_step=False,
+                on_epoch=True,
+                logger=True,
+                prog_bar=True,
             )
 
         self.valid_preds = []
@@ -1076,8 +1089,7 @@ class LeapLightningModule(LightningModule):
 
 
 def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
-    valid_name = get_valid_name(cfg)
-    monitor = f"valid_loss/{valid_name}"
+    monitor = "valid_precision_recall_0.50000"
     dm = LeapLightningDataModule(cfg)
 
     if cfg.exp.restart_ckpt_path:
@@ -1090,7 +1102,7 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
         dirpath=output_path / "checkpoints",
         verbose=True,
         monitor=monitor,
-        mode="min",
+        mode="max",
         save_top_k=3,
         save_last=False,
         enable_version_counter=False,
@@ -1101,7 +1113,7 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
     early_stopping = EarlyStopping(
         monitor=monitor,
         patience=cfg.exp.early_stopping_patience,
-        mode="min",
+        mode="max",
     )
     if cfg.debug:
         cfg.exp.max_epochs = 2
@@ -1198,14 +1210,24 @@ def predict_val2(cfg: DictConfig, output_path: Path) -> None:
         ).reset_index()
         original_predict_df.to_parquet(output_path / "val2_predict.parquet")
         print(original_predict_df)
-        del original_predict_df
-        gc.collect()
 
         original_label_df = pd.DataFrame(labels, columns=[0]).reset_index()
         original_label_df.to_parquet(output_path / "val2_label.parquet")
         print(original_label_df)
-        del original_label_df
-        gc.collect()
+
+        valid_preds = preds[:, 0]  # classの番号
+        valid_y_class = labels == 0
+
+        thresholds = [0.5, 0.7, 0.9, 0.99, 0.999, 0.9999, 0.99999]
+        for threshold in thresholds:
+            y_pred = (valid_preds > threshold).astype(np.int64)
+            # リコールと精度を計算
+            num_cand = np.sum(y_pred)
+            precision = precision_score(valid_y_class, y_pred)
+            recall = recall_score(valid_y_class, y_pred)
+            print(
+                f"Threshold: {threshold:.5f}, Num:{num_cand}, Precision: {precision:.5f}, Recall: {recall:.5f}"
+            )
 
 
 def predict_test(cfg: DictConfig, output_path: Path) -> None:

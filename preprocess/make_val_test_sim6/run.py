@@ -132,6 +132,15 @@ def make_sim_data_from_df(cfg, df, old_df, save_dir, mode):
                     .alias("is_top1_next")
                 ]
             )
+            .with_columns(
+                [
+                    pl.col("old_row_index")
+                    .list.slice(0, 1)
+                    .list.contains(pl.col("row_index") + 384 * i)
+                    .alias(f"is_top1_{i}")
+                    for i in [6, -18, -66, 78]
+                ]
+            )
         )
         all_size = len(stats_df)
         max_get_size = len(stats_df.filter(pl.col("time_mod") == 24))
@@ -147,11 +156,20 @@ def make_sim_data_from_df(cfg, df, old_df, save_dir, mode):
             original_y = base_array[start_ri:end_ri, 556:]
             top1 = old_array[top_k_similar[start_ri:end_ri, 0], :556]
             is_next = stats_df[start_ri:end_ri]["is_top1_next"].to_numpy()
+
+            is_in_bools = np.zeros((384, 5), dtype=bool)
+            is_in_bools[:, :4] = stats_df[start_ri:end_ri][
+                [f"is_top1_{i}" for i in [6, -18, -66, 78]]
+            ]
+            # is_in_bools のaxis=1の合計が０のときは最後を1にする
+            is_in_bools[np.sum(is_in_bools, axis=1) == 0, -1] = 1
+            y_class = np.argmax(is_in_bools, axis=1)
             np.savez(
                 save_dir / f"id{start_ri}.npz",
                 x=original_x,
                 y=original_y,
                 is_next=is_next,
+                y_class=y_class,
                 top1=top1,
             )
         elif mode == "test":
