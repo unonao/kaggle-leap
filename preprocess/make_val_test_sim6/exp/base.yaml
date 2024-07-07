@@ -1,0 +1,11 @@
+seed: 7
+
+topk: 3
+chunk_size: 100
+output_dir: input/sim6_data
+scale_dir: output/preprocess/normalize_009_rate_feat/bolton
+test_data_path: input/test.parquet
+test_old_data_path: input/test_old.parquet
+data_dir: input/ClimSim_low-res
+
+valid_year_id: 0
