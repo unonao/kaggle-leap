@@ -1,0 +1,20 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+scheduler:
+  name: CosineAnnealingWarmRestarts
+  use_one_epoch_warmup: True
+
+train_data_skip_mod: 1
+val_check_interval: 8200 # 105120ファイルの1/8
+max_epochs: 1
+early_stopping_patience: 20
+
+
+model:
+  same_height_hidden_sizes: [256, 64, 16]
+  use_input_layer_norm: False
+  use_output_layer_norm: True
+  embedding_dim: 64
+  categorical_embedding_dim: 64
+  layers: 3

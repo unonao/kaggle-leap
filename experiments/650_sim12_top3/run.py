@@ -1608,7 +1608,7 @@ def predict_test(cfg: DictConfig, output_path: Path) -> None:
     preds3 = []
     model = model.to("cuda")
     model.eval()
-    for x, x_cat, x1, x1_cat, x2, x2_cat, x3, x3_cat, __loader__ in tqdm(dataloader):
+    for x, x_cat, x1, x1_cat, x2, x2_cat, x3, x3_cat, original_x in tqdm(dataloader):
         x = x.to("cuda").to(torch_dtype)
         x_cat = x_cat.to("cuda").to(torch.long)
         x1 = x1.to("cuda").to(torch_dtype)
@@ -1626,11 +1626,12 @@ def predict_test(cfg: DictConfig, output_path: Path) -> None:
         x2_cat = torch.flatten(x2_cat, start_dim=0, end_dim=1)
         x3 = torch.flatten(x3, start_dim=0, end_dim=1)
         x3_cat = torch.flatten(x3_cat, start_dim=0, end_dim=1)
+        original_x = torch.flatten(original_x, start_dim=0, end_dim=1)
         with torch.no_grad():
             out1 = model(x, x_cat, x1, x1_cat).softmax(dim=1)
             out2 = model(x, x_cat, x2, x2_cat).softmax(dim=1)
             out3 = model(x, x_cat, x3, x3_cat).softmax(dim=1)
-
+        original_xs.append(original_x.cpu().to(torch.float64).numpy())
         preds1.append(out1.detach().cpu().numpy())
         preds2.append(out2.detach().cpu().numpy())
         preds3.append(out3.detach().cpu().numpy())

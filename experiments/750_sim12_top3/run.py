@@ -564,14 +564,13 @@ class LeapLightningDataModule(LightningDataModule):
             original_x = data[:, :556]
             original_y = data[:, 556:]
 
-            # 6,-18,-66,+78, random の中から選んで、6かどうかのbinary classificationをする
-            # 50%の確率で6を選ぶ
+            # 50%の確率で12を選ぶ
             if np.random.rand() < 0.5:
-                append_path_index = path_index + 6
+                append_path_index = path_index + 12
                 y_class = np.zeros(original_x.shape[0], dtype=np.int64)
             else:
                 use_index = np.random.choice([0, 1, 2, 3, 4, 5, 7, 8])
-                classes = [-18, -42, -66, -90, -114, 30, 54, 78, 102]
+                classes = [-12, -36, -60, -84, -108, 36, 60, 84, 108]
                 append_path_index = path_index + classes[use_index]
                 y_class = np.ones(original_x.shape[0], dtype=np.int64) * (use_index + 1)
 
@@ -1202,8 +1201,8 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
         accumulate_grad_batches=cfg.exp.accumulate_grad_batches,
         logger=pl_logger,
         log_every_n_steps=1,
-        limit_train_batches=None if cfg.debug is False else 2,
-        limit_val_batches=None if cfg.debug is False else 2,
+        limit_train_batches=None if cfg.debug is False else 4,
+        limit_val_batches=None if cfg.debug is False else 4,
         # deterministic=True,
         callbacks=[
             checkpoint_cb,
