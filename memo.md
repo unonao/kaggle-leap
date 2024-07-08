@@ -35,5 +35,7 @@ gcs_base_dir: kami
 gcloud storage cp -r output/experiments/222_wo_transformer_vast_single gs://kaggle-leap/experiments
 
 ## command
-python experiments/610_sim6/run.py exp=mid
-python experiments/700_binary_classify/run.py exp=mid
+python experiments/704_diff_top3/run.py exp=all
+python experiments/750_sim12_top3/run.py exp=all      
+
+python experiments/650_sim12_top3/run.py exp=mid
