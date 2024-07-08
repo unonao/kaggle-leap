@@ -138,7 +138,7 @@ def make_sim_data_from_df(cfg, df, old_df, save_dir, mode):
                     .list.slice(0, 1)
                     .list.contains(pl.col("row_index") + 384 * i)
                     .alias(f"is_top1_{i}")
-                    for i in [6, -18, -66, 78]
+                    for i in [-18, -42, -66, -90, -114, 6, 30, 54, 78, 102]
                 ]
             )
         )
@@ -157,19 +157,30 @@ def make_sim_data_from_df(cfg, df, old_df, save_dir, mode):
             top1 = old_array[top_k_similar[start_ri:end_ri, 0], :556]
             is_next = stats_df[start_ri:end_ri]["is_top1_next"].to_numpy()
 
+            # version1
             is_in_bools = np.zeros((384, 5), dtype=bool)
             is_in_bools[:, :4] = stats_df[start_ri:end_ri][
                 [f"is_top1_{i}" for i in [6, -18, -66, 78]]
             ]
-            # is_in_bools のaxis=1の合計が０のときは最後を1にする
             is_in_bools[np.sum(is_in_bools, axis=1) == 0, -1] = 1
             y_class = np.argmax(is_in_bools, axis=1)
+
+            # version2
+            is_in_bools = np.zeros((384, 11), dtype=bool)
+            is_in_bools[:, :10] = stats_df[start_ri:end_ri][
+                [f"is_top1_{i}" for i in [6, -18, -42, -66, -90, -114, 30, 54, 78, 102]]
+            ]
+            # is_in_bools のaxis=1の合計が０のときは最後を1にする
+            is_in_bools[np.sum(is_in_bools, axis=1) == 0, -1] = 1
+            y_class11 = np.argmax(is_in_bools, axis=1)
+
             np.savez(
                 save_dir / f"id{start_ri}.npz",
                 x=original_x,
                 y=original_y,
                 is_next=is_next,
                 y_class=y_class,
+                y_class11=y_class11,
                 top1=top1,
             )
         elif mode == "test":

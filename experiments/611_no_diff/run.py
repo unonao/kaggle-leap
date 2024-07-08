@@ -68,7 +68,8 @@ rho_h20 = 1.0e3  # de
 
 def sort_key(s):
     # 数値部分を抽出
-    match = re.search(r"\d+", s)
+    name = Path(s).name
+    match = re.search(r"\d+", name)
     return int(match.group()) if match else 0
 
 
