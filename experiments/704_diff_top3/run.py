@@ -1059,7 +1059,7 @@ class LeapLightningModule(LightningModule):
         print(f"AUC: {auc_score:.5f}")
         self.log(
             "valid_auc",
-            precision * recall,
+            auc_score,
             on_step=False,
             on_epoch=True,
             logger=True,
