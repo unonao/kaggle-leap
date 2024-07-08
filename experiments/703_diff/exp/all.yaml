@@ -8,7 +8,7 @@ scheduler:
 train_data_skip_mod: 1
 val_check_interval: 8200 # 105120ファイルの1/8
 max_epochs: 1
-early_stopping_patience: 20
+early_stopping_patience: 3
 
 
 model:
