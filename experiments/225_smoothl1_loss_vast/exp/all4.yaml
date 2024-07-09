@@ -13,14 +13,14 @@ train_data_skip_mod: 1
 valid_data_skip_mod: 14
 additional_data_skip_mod: 1
 val_check_interval: 18000
-max_epochs: 3
+max_epochs: 4
 early_stopping_patience: 20
 
 l1_beta: 0.5
 
 model:
-  n_base_channels: 640
+  n_base_channels: 512
   layers: [2, 2]
   kernel_sizes: [3, 7]
 
-devices: [1]
+devices: [0]
