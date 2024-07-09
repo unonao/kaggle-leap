@@ -23,4 +23,4 @@ model:
   layers: [2, 2]
   kernel_sizes: [3, 7]
 
-devices: [0]
+devices: [1]

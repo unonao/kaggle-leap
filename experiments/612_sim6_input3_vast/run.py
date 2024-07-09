@@ -46,6 +46,8 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
 
+sys.path.append(".")
+
 import utils
 import wandb
 from utils.humidity import cal_specific2relative_coef
@@ -115,7 +117,7 @@ class Scaler:
             self.eps,
         )
 
-        grid_path = "/kaggle/working/misc/grid_info/ClimSim_low-res_grid-info.nc"
+        grid_path = "/root/kaggle-leap/misc/grid_info/ClimSim_low-res_grid-info.nc"
         grid_info = xr.open_dataset(grid_path)
         self.hyai = grid_info["hyai"].to_numpy()
         self.hybi = grid_info["hybi"].to_numpy()
@@ -509,7 +511,7 @@ class LeapLightningDataModule(LightningDataModule):
         self.scaler = Scaler(cfg)
         self.cfg = cfg
 
-        grid_path = "/kaggle/working/misc/grid_info/ClimSim_low-res_grid-info.nc"
+        grid_path = "/root/kaggle-leap/misc/grid_info/ClimSim_low-res_grid-info.nc"
         grid_info = xr.open_dataset(grid_path)
         self.hyai = grid_info["hyai"].to_numpy()
         self.hybi = grid_info["hybi"].to_numpy()
@@ -1456,6 +1458,7 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
         num_sanity_val_steps=0,
         # sync_batchnorm=True,
         val_check_interval=cfg.exp.val_check_interval,
+        devices=cfg.exp.devices,
     )
     trainer.fit(model, dm, ckpt_path=cfg.exp.resume_ckpt_path)
 

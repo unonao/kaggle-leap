@@ -38,4 +38,4 @@ gcloud storage cp -r output/experiments/222_wo_transformer_vast_single gs://kagg
 python experiments/704_diff_top3/run.py exp=all
 python experiments/750_sim12_top3/run.py exp=all      
 python experiments/225_smoothl1_loss_vast/run.py exp=all4
-python experiments/612_sim6_input3/run.py exp=all001
+python experiments/612_sim6_input3_vast/run.py exp=all001
