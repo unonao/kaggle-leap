@@ -483,12 +483,16 @@ def dowload_month(cfg: DictConfig, month_dir: str, data_utils: DataUtils) -> Non
         input_path = Path(input_path)
         file_name_text = input_path.stem.split(".")[-1]
 
-        for j in range(0, len(array), 300):
+        skip = len(array) // 300
+        for j in range(0, skip):
             save_path = save_dir / f"{file_name_text}_{j:06d}.npy"
-            np.save(save_path, array[j : j + 300])
+            np.save(
+                save_path,
+                array[j::skip],
+            )
 
         if i == 0:
-            print(f"{array.shape=}")
+            print(f"{array.shape=}, {array[0::skip].shape=}")
 
         if cfg.debug:
             break
@@ -524,9 +528,10 @@ def make_webdataset(cfg: DictConfig, exp_name) -> None:
     """
     month_dirs = (
         [f"train/0001-{str(m).zfill(2)}" for m in range(2, 13)]
-        + [f"train/000{y}-{str(m).zfill(2)}" for y in range(2, 7) for m in range(1, 13)]
-        + ["train/0007-01"]
+        + [f"train/000{y}-{str(m).zfill(2)}" for y in range(2, 9) for m in range(1, 13)]
+        + ["train/0009-01"]
     )
+    month_dirs.reverse()
     if cfg.exp.break_n_months:
         month_dirs = month_dirs[: cfg.exp.break_n_months]
     if cfg.debug:

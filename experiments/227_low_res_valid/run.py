@@ -660,7 +660,7 @@ class LeapLightningDataModule(LightningDataModule):
             self.valid_dataset,
             batch_size=self.cfg.exp.train_batch_size,
             num_workers=self.cfg.exp.num_workers,
-            shuffle=True,
+            shuffle=False,
             pin_memory=False,
         )
 

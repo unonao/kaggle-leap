@@ -17,6 +17,12 @@ additional_end: [7, 7]
 valid_start: [8, 1]
 valid_end: [9, 1]
 
+train_batch_size: 1
+valid_batch_size: 1
+accumulate_grad_batches: 64
+optimizer: 
+  name: Adan
+  lr: 1e-3
 
 model:
   layers: [2,1]

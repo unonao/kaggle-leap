@@ -65,6 +65,39 @@ def make_hack_map(cfg, output_path):
     print(map_df.head())
 
 
+def join_hack_map(cfg, output_path):
+    print("load data")
+    test_df = pl.read_parquet("input/test.parquet")
+    test_old_df = pl.read_parquet("input/test_old.parquet")
+    map_df = pl.read_parquet(output_path / "map_hack.parquet")
+
+    print("join")
+    ozeon_cols = [f"pbuf_ozone_{s}" for s in range(10)]
+    test_info = (
+        test_df[["sample_id"] + ozeon_cols]
+        .with_columns([pl.col(col).round(12) for col in ozeon_cols])
+        .join(
+            map_df.with_columns([pl.col(col).round(12) for col in ozeon_cols]),
+            on=ozeon_cols,
+            how="left",
+        )
+        .drop(ozeon_cols)
+    )
+    print("null", test_info["month"].is_null().sum())
+    print(test_info.head())
+
+    test_old_info = (
+        test_old_df[["sample_id", "pbuf_ozone_0"]]
+        .join(map_df, on="pbuf_ozone_0", how="left")
+        .drop(ozeon_cols)
+    )
+    print("null", test_old_info["month"].is_null().sum())
+    print(test_old_info.head())
+
+    test_info.write_parquet(output_path / "test_info.parquet")
+    test_old_info.write_parquet(output_path / "test_old_info.parquet")
+
+
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg: DictConfig) -> None:
     runtime_choices = HydraConfig.get().runtime.choices
@@ -75,7 +108,10 @@ def main(cfg: DictConfig) -> None:
     print(f"ouput_path: {output_path}")
     os.makedirs(output_path, exist_ok=True)
 
-    make_hack_map(cfg, output_path)
+    if "make" in cfg.exp.modes:
+        make_hack_map(cfg, output_path)
+    if "join" in cfg.exp.modes:
+        join_hack_map(cfg, output_path)
 
 
 if __name__ == "__main__":
