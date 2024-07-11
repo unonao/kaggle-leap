@@ -1,0 +1,23 @@
+defaults:
+  - base@_here_ # ベースの設定ファイルを指定する
+
+scheduler:
+  name: CosineAnnealingWarmRestarts
+  use_one_epoch_warmup: True
+
+optimizer: 
+  name: Adan
+  lr: 2e-3
+
+train_data_skip_mod: 1
+valid_data_skip_mod: 14
+additional_data_skip_mod: 1
+val_check_interval: 18000
+max_epochs: 3
+early_stopping_patience: 20
+
+l1_beta: 0.01
+
+model:
+  layers: [2, 2]
+  kernel_sizes: [3, 7]
