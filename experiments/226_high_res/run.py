@@ -6,7 +6,6 @@ import math
 import os
 import pickle
 import random
-import re
 import shutil
 import sys
 import time
@@ -40,9 +39,10 @@ from pytorch_lightning.callbacks import (
 )
 from pytorch_lightning.loggers import WandbLogger
 from scipy.ndimage import uniform_filter1d
-from sklearn.metrics import precision_score, recall_score, roc_auc_score
+from sklearn.metrics import r2_score
 from timm.utils import ModelEmaV2
 from torch.utils.data import DataLoader, Dataset
+from torch_geometric.nn import MessagePassing
 from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
 
@@ -53,7 +53,7 @@ from utils.metric import score
 
 
 def get_valid_name(cfg):
-    return "sim6"
+    return "val2"
 
 
 # physical constatns from (E3SM_ROOT/share/util/shr_const_mod.F90)
@@ -64,13 +64,6 @@ lf = 3.337e5  # latent heat of fusion      ~ J/kg
 ls = lv + lf  # latent heat of sublimation ~ J/kg
 rho_air = 101325.0 / (6.02214e26 * 1.38065e-23 / 28.966) / 273.15
 rho_h20 = 1.0e3  # de
-
-
-def sort_key(s):
-    # 数値部分を抽出
-    name = Path(s).name
-    match = re.search(r"\d+", name)
-    return int(match.group()) if match else 0
 
 
 def rolling_mean(data, window_size):
@@ -486,18 +479,17 @@ class Scaler:
         return x, x_cat, y
 
 
-def get_two_years_month_dirs(year_id):
-    start = 1 + year_id * 2
-    month_dirs = (
-        [f"train/000{start}-{str(m).zfill(2)}" for m in range(2, 13)]
-        + [
-            f"train/000{y}-{str(m).zfill(2)}"
-            for y in range(start + 1, start + 2)
-            for m in range(1, 13)
-        ]
-        + [f"train/000{start+2}-01"]
-    )
-    return month_dirs
+def get_train_dir(cfg, start_year, start_month, end_year, end_month):
+    dir_paths = []
+    for year in range(start_year, end_year + 1):
+        for month in range(1, 13):
+            if (year == start_year and month < start_month) or (
+                year == end_year and month > end_month
+            ):
+                continue
+            tmp = Path(cfg.exp.dataset_dir) / f"{year:04d}-{month:02d}/*"
+            dir_paths.append(tmp)
+    return dir_paths
 
 
 class LeapLightningDataModule(LightningDataModule):
@@ -508,45 +500,30 @@ class LeapLightningDataModule(LightningDataModule):
         super().__init__()
         self.scaler = Scaler(cfg)
         self.cfg = cfg
+        self.rng = random.Random(self.cfg.exp.seed)
+
+        # paths
+        dir_paths = []
+        start_year, start_month = cfg.exp.train_start
+        end_year, end_month = cfg.exp.train_end
+        dir_paths += get_train_dir(cfg, start_year, start_month, end_year, end_month)
+        start_year, start_month = cfg.exp.additional_start
+        end_year, end_month = cfg.exp.additional_end
+        dir_paths += get_train_dir(cfg, start_year, start_month, end_year, end_month)
+        self.train_file_paths = sorted(
+            list(itertools.chain(*[glob.glob(str(p)) for p in dir_paths]))
+        )[:: cfg.exp.train_data_skip_mod]
+        print(f"train_file_paths: {len(self.train_file_paths)}")
 
         grid_path = "/kaggle/working/misc/grid_info/ClimSim_low-res_grid-info.nc"
         grid_info = xr.open_dataset(grid_path)
         self.hyai = grid_info["hyai"].to_numpy()
         self.hybi = grid_info["hybi"].to_numpy()
 
-        # paths
-        dir_paths = list(
-            itertools.chain.from_iterable(
-                [
-                    get_two_years_month_dirs(year_id)
-                    for year_id in cfg.exp.train_years_index
-                ]
-            )
-        )
-        self.train_file_paths = sorted(
-            list(
-                itertools.chain(
-                    *[
-                        glob.glob(f"{cfg.exp.dataset_dir}/{dir_path}/*.npy")
-                        for dir_path in dir_paths
-                    ]
-                )
-            ),
-        )
-
-        self.valid_file_paths = sorted(
-            glob.glob(str(Path(cfg.exp.sim6_dir) / "valid/*")), key=sort_key
-        )
-        self.test_file_paths = sorted(
-            glob.glob(str(Path(cfg.exp.sim6_dir) / "test/*")), key=sort_key
-        )
-
-        if cfg.debug:
-            self.train_file_paths = self.train_file_paths[:60]
-            self.valid_file_paths = self.valid_file_paths[:60]
-            self.test_file_paths = self.test_file_paths[:60]
-        print(
-            f"{len(self.train_file_paths)=}, {len(self.valid_file_paths)=}, {len(self.test_file_paths)=}"
+        self.train_dataset = self.TrainDataset(
+            self.cfg,
+            self.scaler,
+            self.train_file_paths,
         )
 
     class TrainDataset(Dataset):
@@ -556,127 +533,84 @@ class LeapLightningDataModule(LightningDataModule):
             self.file_paths = file_paths
 
         def __len__(self):
-            return len(self.file_paths) // self.cfg.exp.train_data_skip_mod
+            return len(self.file_paths)
 
         def __getitem__(self, index):
-            path_index = index * self.cfg.exp.train_data_skip_mod
-            data = np.load(self.file_paths[path_index])
+            data = np.load(self.file_paths[index])
             original_x = data[:, :556]
             original_y = data[:, 556:]
-
-            # 6,-18,-66,+78, random の中から選んで、6かどうかのbinary classificationをする
-            # 50%の確率で6を選ぶ
-            if np.random.rand() < 0.5:
-                append_path_index = path_index + 6
-                y_class = np.zeros(original_x.shape[0], dtype=np.int64)
-            else:
-                use_index = np.random.choice([0, 1, 2])
-                classes = [-18, -42, -66, -90, -114, 30, 54, 78, 102]
-                append_path_index = path_index + classes[use_index]
-                y_class = np.ones(original_x.shape[0], dtype=np.int64) * (use_index + 1)
-
-            # 10%の確率、もしくは長さが超えた時にランダムに選ぶ
-            if (
-                np.random.rand() < 0.10
-                or append_path_index >= len(self.file_paths)
-                or append_path_index < 0
-            ):
-                append_path_index = np.random.choice(len(self.file_paths))
-                y_class = np.ones(original_x.shape[0], dtype=np.int64) * 10
-                append_data = np.load(self.file_paths[append_path_index])
-                top1_sim_x = append_data[:, :556]
-                if np.random.rand() < 0.5:
-                    np.random.shuffle(top1_sim_x)
-            else:
-                append_data = np.load(self.file_paths[append_path_index])
-                top1_sim_x = append_data[:, :556]
 
             x, x_cat, y, filter_bool = self.scaler.filter_and_scale(
                 original_x, original_y
             )
-            x1, x1_cat = self.scaler.scale_input(top1_sim_x)
 
             return (
                 torch.from_numpy(x),
                 torch.from_numpy(x_cat),
-                torch.from_numpy(x1),
-                torch.from_numpy(x1_cat),
                 torch.from_numpy(y),
-                torch.from_numpy(y_class),
                 torch.from_numpy(filter_bool),
                 torch.from_numpy(original_x),
                 torch.from_numpy(original_y),
             )
 
-    class ValidDataset(Dataset):
-        def __init__(self, cfg, scaler, file_paths):
+    class Val2Dataset(Dataset):
+        def __init__(self, cfg, valid_df, scaler, hyai, hybi):
             self.cfg = cfg
             self.scaler = scaler
-            self.file_paths = file_paths
+            self.hyai = hyai
+            self.hybi = hybi
+            # 提供データは cam_in_SNOWHICE は削除済みなので削除しないが、idを削除する
+            self.x = valid_df[:, 1:557].to_numpy()
+            self.y = valid_df[:, 557:].to_numpy()
+
+            # 長さは384の倍数にする
+            mod = self.x.shape[0] % 384
+            if mod > 0:
+                self.x = self.x[:-mod]
+                self.y = self.y[:-mod]
 
         def __len__(self):
-            return len(self.file_paths)
+            return self.x.shape[0] // 384
 
         def __getitem__(self, index):
-            data = np.load(self.file_paths[index])
-            original_x = data["x"]
-            original_y = data["y"]
-            top1_sim_x = data["top1"]
-            y_class = data["y_class11"].astype(np.int64)
-
+            original_x = self.x[index * 384 : (index + 1) * 384]
+            original_y = self.y[index * 384 : (index + 1) * 384]
             x, x_cat, y, filter_bool = self.scaler.filter_and_scale(
                 original_x, original_y
             )
-            x1, x1_cat = self.scaler.scale_input(top1_sim_x)
-
             return (
                 torch.from_numpy(x),
                 torch.from_numpy(x_cat),
-                torch.from_numpy(x1),
-                torch.from_numpy(x1_cat),
                 torch.from_numpy(y),
-                torch.from_numpy(y_class),
                 torch.from_numpy(filter_bool),
                 torch.from_numpy(original_x),
                 torch.from_numpy(original_y),
             )
 
     class TestDataset(Dataset):
-        def __init__(self, cfg, scaler, file_paths):
+        def __init__(self, cfg, test_df, scaler, hyai, hybi):
             self.cfg = cfg
             self.scaler = scaler
-            self.file_paths = file_paths
+            self.hyai = hyai
+            self.hybi = hybi
+            # 提供データは cam_in_SNOWHICE は削除済みなので削除しないが、idを削除する
+            self.x = test_df[:, 1:].to_numpy()
 
         def __len__(self):
-            return len(self.file_paths)
+            return self.x.shape[0]
 
         def __getitem__(self, index):
-            data = np.load(self.file_paths[index])
-            original_x = data["x"]
-            top1_sim_x = data["top1"]
-
-            x, x_cat = self.scaler.scale_input(original_x)
-            if self.cfg.exp.use_hack:
-                x1, x1_cat = self.scaler.scale_input(top1_sim_x)
-            else:
-                x1, x1_cat = x, x_cat
-
+            original_x = self.x[index]
+            x, x_cat = self.scaler.scale_input_1d(original_x)
             return (
                 torch.from_numpy(x),
                 torch.from_numpy(x_cat),
-                torch.from_numpy(x1),
-                torch.from_numpy(x1_cat),
                 torch.from_numpy(original_x),
             )
 
     def train_dataloader(self):
-        train_dataset = self.TrainDataset(
-            self.cfg,
-            self.scaler,
-            self.train_file_paths,
-        )
         return DataLoader(
-            train_dataset,
+            self.train_dataset,
             batch_size=self.cfg.exp.train_batch_size,
             num_workers=self.cfg.exp.num_workers,
             shuffle=True,
@@ -684,26 +618,256 @@ class LeapLightningDataModule(LightningDataModule):
         )
 
     def val_dataloader(self):
-        valid_dataset = self.ValidDataset(self.cfg, self.scaler, self.valid_file_paths)
+        dataloader, _ = self.val2_dataloader()
+        return dataloader
+
+    def val2_dataloader(self):
+        """
+        validation合わせるために作った推論用のdataloader
+        """
+        self.valid_df = pl.read_parquet(
+            self.cfg.exp.valid_path,
+            n_rows=(None if self.cfg.debug is False else 384 * 2),
+        )
+        self.val2_dataset = self.Val2Dataset(
+            self.cfg, self.valid_df, self.scaler, self.hyai, self.hybi
+        )
         return DataLoader(
-            valid_dataset,
+            self.val2_dataset,
             batch_size=self.cfg.exp.valid_batch_size,
             num_workers=self.cfg.exp.num_workers,
             shuffle=False,
             pin_memory=False,
-        )
+        ), self.valid_df
 
     def test_dataloader(self):
+        self.test_df = pl.read_parquet(
+            self.cfg.exp.test_path, n_rows=(None if self.cfg.debug is False else 500)
+        )
         self.test_dataset = self.TestDataset(
-            self.cfg, self.scaler, self.test_file_paths
+            self.cfg, self.test_df, self.scaler, self.hyai, self.hybi
         )
         return DataLoader(
             self.test_dataset,
-            batch_size=self.cfg.exp.valid_batch_size,
+            batch_size=self.cfg.exp.valid_batch_size * 128,
             num_workers=self.cfg.exp.num_workers,
             shuffle=False,
             pin_memory=False,
+        ), self.test_df
+
+
+class MultiConv(nn.Module):
+    """(convolution => [BN] => ReLU) * 2
+    height and width size will be changed to size-4.
+    """
+
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        layers,
+        kernel_sizes,
+        use_batch_norm=True,
+    ):
+        super().__init__()
+        self.in_conv = []
+        self.in_conv.append(
+            nn.Conv2d(
+                in_channels,
+                out_channels,
+                kernel_size=(1, 1),
+                padding="same",
+                bias=False,
+            )
         )
+        if use_batch_norm:
+            self.in_conv.append(nn.BatchNorm2d(out_channels))
+        self.in_conv.append(nn.ReLU(inplace=True))
+        self.in_conv = nn.Sequential(*self.in_conv)
+
+        self.convs = []
+        for i, layer in enumerate(layers):
+            conv = []
+            for _ in range(layer):
+                conv.append(
+                    nn.Conv2d(
+                        out_channels,
+                        out_channels,
+                        kernel_size=(kernel_sizes[i], 1),
+                        padding="same",
+                        bias=False,
+                    )
+                )
+                if use_batch_norm:
+                    conv.append(nn.BatchNorm2d(out_channels))
+                conv.append(nn.ReLU(inplace=True))
+            self.convs.append(nn.Sequential(*conv))
+        self.convs = nn.ModuleList(self.convs)
+
+    def forward(self, x):
+        x = self.in_conv(x)
+        # skip connection
+        for conv in self.convs:
+            x = x + conv(x)
+        return x
+
+
+class Down(nn.Module):
+    """Downscaling with maxpool then double conv"""
+
+    def __init__(
+        self, in_channels, out_channels, layers, kernel_sizes, use_batch_norm=True
+    ):
+        super().__init__()
+        self.maxpool_conv = nn.Sequential(
+            nn.MaxPool2d((2, 1)),
+            MultiConv(
+                in_channels,
+                out_channels,
+                layers,
+                kernel_sizes,
+                use_batch_norm=use_batch_norm,
+            ),
+        )
+
+    def forward(self, x):
+        return self.maxpool_conv(x)
+
+
+class Up(nn.Module):
+    """Upscaling then double conv"""
+
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        layers,
+        kernel_sizes,
+        bilinear=True,
+        use_batch_norm=True,
+    ):
+        super().__init__()
+
+        self.up = nn.ConvTranspose2d(
+            in_channels, in_channels // 2, kernel_size=(2, 1), stride=2
+        )
+        self.conv = MultiConv(
+            in_channels,
+            out_channels,
+            layers,
+            kernel_sizes,
+            use_batch_norm=use_batch_norm,
+        )
+
+    def forward(self, x1, x2):
+        x1 = self.up(x1)
+        # input is CHW
+        diffY = x2.size()[2] - x1.size()[2]
+        diffX = x2.size()[3] - x1.size()[3]
+
+        x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2, diffY // 2, diffY - diffY // 2])
+        # if you have padding issues, see
+        # https://github.com/HaiyongJiang/U-Net-Pytorch-Unstructured-Buggy/commit/0e854509c2cea854e247a9c615f175f76fbb2e3a
+        # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
+        x = torch.cat([x2, x1], dim=1)
+        return self.conv(x)
+
+
+class OutConv(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(OutConv, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+    def forward(self, x):
+        return self.conv(x)
+
+
+class BottleneckEncoder(nn.Sequential):
+    # https://github.com/qubvel/segmentation_models.pytorch/blob/3bf4d6ef2bc9d41c2ab3436838aa22375dd0f23a/segmentation_models_pytorch/base/heads.py#L13
+    def __init__(self, in_channels, out_nums, pooling="avg", dropout=0.2):
+        if pooling not in ("max", "avg"):
+            raise ValueError(
+                "Pooling should be one of ('max', 'avg'), got {}.".format(pooling)
+            )
+        pool = nn.AdaptiveAvgPool2d(1) if pooling == "avg" else nn.AdaptiveMaxPool2d(1)
+        flatten = nn.Flatten()
+        dropout = nn.Dropout(p=dropout, inplace=True) if dropout else nn.Identity()
+        linear = nn.Linear(in_channels, out_nums, bias=True)
+        super().__init__(pool, flatten, dropout, linear)
+
+
+class UNet(nn.Module):
+    def __init__(
+        self,
+        n_channels,
+        n_classes,
+        bottleneck_out_nums,
+        layers,
+        kernel_sizes,
+        depth=4,
+        dropout=0.2,
+        n_base_channels=32,
+        use_batch_norm=True,
+    ):
+        super(UNet, self).__init__()
+        bilinear = False
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        self.bilinear = bilinear
+
+        self.inc = MultiConv(
+            n_channels,
+            n_base_channels,
+            layers,
+            kernel_sizes,
+            use_batch_norm=use_batch_norm,
+        )
+        self.downs = nn.ModuleList(
+            [
+                Down(
+                    n_base_channels * (2**i),
+                    n_base_channels * (2 ** (i + 1)),
+                    layers,
+                    kernel_sizes,
+                    use_batch_norm,
+                )
+                for i in range(depth)
+            ]
+        )
+        self.ups = nn.ModuleList(
+            [
+                Up(
+                    n_base_channels * (2 ** (depth - i)),
+                    n_base_channels * (2 ** (depth - i - 1)),
+                    layers,
+                    kernel_sizes,
+                    bilinear,
+                    use_batch_norm,
+                )
+                for i in range(depth)
+            ]
+        )
+
+        self.outc = OutConv(n_base_channels, n_classes)
+
+        self.bottleneck_encoder = BottleneckEncoder(
+            n_base_channels * (2**depth),
+            out_nums=bottleneck_out_nums,
+            pooling="avg",
+            dropout=dropout,
+        )
+
+    def forward(self, x):
+        x1 = self.inc(x)
+        xs = [x1]
+        for down in self.downs:
+            xs.append(down(xs[-1]))
+        x = xs[-1]
+        for i, up in enumerate(self.ups):
+            x = up(x, xs[-2 - i])
+        logits = self.outc(x)
+        bottleneck_feat = self.bottleneck_encoder(xs[-1])
+        return logits, bottleneck_feat
 
 
 class MLP(nn.Module):
@@ -728,11 +892,18 @@ class LeapModel(nn.Module):
     def __init__(
         self,
         same_height_hidden_sizes=[60, 60],
+        output_hidden_sizes=[60, 60],
         use_input_layer_norm=False,
         use_output_layer_norm=True,
+        use_batch_norm=True,
         embedding_dim=5,
         categorical_embedding_dim=5,
-        layers=2,
+        depth=4,
+        n_unet=2,
+        dropout=0.2,
+        layers=[1, 1],
+        kernel_sizes=[5, 3],
+        n_base_channels=32,
         seq_feats=[],
         scalar_feats=[],
     ):
@@ -748,21 +919,57 @@ class LeapModel(nn.Module):
         previous_size += len(seq_feats)
         previous_size += len(scalar_feats)
         previous_size += 2 * categorical_embedding_dim
-
         self.same_height_encoder = MLP(
-            previous_size * 3,
-            same_height_hidden_sizes,
-            use_layer_norm=use_input_layer_norm,
+            previous_size, same_height_hidden_sizes, use_layer_norm=use_input_layer_norm
         )
 
-        input_dim = same_height_hidden_sizes[-1] * 60
-        self.head = MLP(
-            input_dim,
-            [input_dim // (2**i) for i in range(layers)] + [11],
+        unet_layers = []
+        in_channels = same_height_hidden_sizes[-1]
+        for _ in range(n_unet):
+            unet_layers.append(
+                UNet(
+                    n_channels=in_channels,
+                    n_classes=n_base_channels,
+                    bottleneck_out_nums=8,
+                    layers=layers,
+                    kernel_sizes=kernel_sizes,
+                    depth=depth,
+                    dropout=dropout,
+                    n_base_channels=n_base_channels,
+                    use_batch_norm=use_batch_norm,
+                )
+            )
+            in_channels += n_base_channels
+        self.unet_layers = nn.ModuleList(unet_layers)
+        in_channels += embedding_dim
+
+        self.t_head = MLP(
+            in_channels,
+            output_hidden_sizes + [2],
             use_layer_norm=use_output_layer_norm,
         )
+        self.q1_head = MLP(
+            in_channels,
+            output_hidden_sizes + [2],
+            use_layer_norm=use_output_layer_norm,
+        )
+        self.cloud_water_head = MLP(
+            in_channels,
+            output_hidden_sizes + [4],
+            use_layer_norm=use_output_layer_norm,
+        )
+        self.wind_head = nn.ModuleList(
+            [
+                MLP(
+                    in_channels,
+                    output_hidden_sizes + [2],
+                    use_layer_norm=use_output_layer_norm,
+                )
+                for _ in range(2)
+            ]
+        )
 
-    def _preprocess(self, x, x_cat):
+    def forward(self, x, x_cat):
         x_state_t = x[:, :60].unsqueeze(-1)
         x_state_q0001 = x[:, 60:120].unsqueeze(-1)
         x_state_q0002 = x[:, 120:180].unsqueeze(-1)
@@ -819,22 +1026,45 @@ class LeapModel(nn.Module):
             input_list,
             dim=2,
         )
-        return x
-
-    def forward(self, x, x_cat, x1, x1_cat):
-        x = self._preprocess(x, x_cat)
-        x1 = self._preprocess(x1, x1_cat)
-
-        x = torch.cat(
-            [x, x1, (x - x1)],
-            dim=2,
-        )
 
         # (batch, 60, dim) -> (batch, 60, same_height_hidden_sizes[-1]*n_feat_channels)
         x = self.same_height_encoder(x)
-        x = x.flatten(1, 2)
+        x = x.transpose(-1, -2).unsqueeze(-1)
 
-        out = self.head(x)
+        # input: (batch, n_base_channels, 60, 1)
+        for unet_layer in self.unet_layers:
+            x_out, class_logits = unet_layer(x)
+            x = torch.cat([x, x_out], dim=1)
+
+        x = x.squeeze(-1)  # ->(batch, n_base_channels, 60)
+        x = x.transpose(-1, -2)  # ->(batch, 60, n_base_channels)
+
+        x_position_last = self.positional_embedding_last(
+            torch.LongTensor(range(60)).repeat(x.shape[0], 1).to(x.device)
+        )  # ->(batch, 60, n_emb)
+        x = torch.cat([x, x_position_last], dim=2)
+
+        out_t = self.t_head(x)
+        out_t = out_t[:, :, 0:1].exp() - out_t[:, :, 1:2].exp()
+
+        out_q1 = self.q1_head(x)
+        out_q1 = out_q1[:, :, 0:1].exp() - out_q1[:, :, 1:2].exp()
+
+        out_cw = self.cloud_water_head(x)
+        out_q2 = out_cw[:, :, 0:1].exp() - out_cw[:, :, 1:2].exp()
+        out_q3 = out_cw[:, :, 2:3].exp() - out_cw[:, :, 3:4].exp()
+
+        out_u = self.wind_head[0](x)
+        out_u = out_u[:, :, 0:1].exp() - out_u[:, :, 1:2].exp()
+
+        out_v = self.wind_head[1](x)
+        out_v = out_v[:, :, 0:1].exp() - out_v[:, :, 1:2].exp()
+
+        out = torch.cat([out_t, out_q1, out_q2, out_q3, out_u, out_v], dim=2)
+        out = out.transpose(-1, -2)
+        out = out.flatten(start_dim=1)
+        out = torch.cat([out, class_logits], dim=1)
+
         return out
 
 
@@ -848,11 +1078,7 @@ class LeapLightningModule(LightningModule):
             scalar_feats=cfg.exp.scalar_feats,
         )
         self.scaler = Scaler(cfg)
-        # self.loss_fc = nn.MSELoss()  # Using MSE for regression
-        # self.loss_fc = nn.L1Loss()
-        # self.bceloss = nn.BCEWithLogitsLoss()
-        self.loss_fc = nn.CrossEntropyLoss()
-
+        self.loss_fc = nn.MSELoss()  # Using MSE for regression
         self.model_ema = None
         if self.cfg.exp.ema.use_ema:
             print("Using EMA")
@@ -868,7 +1094,8 @@ class LeapLightningModule(LightningModule):
         )
 
         self.valid_preds = []
-        self.valid_y_class = []
+        self.valid_labels = []
+        self.valid_original_xs = []
 
         ss_df = pl.read_csv(
             "input/leap-atmospheric-physics-ai-climsim/sample_submission.csv", n_rows=1
@@ -879,29 +1106,25 @@ class LeapLightningModule(LightningModule):
 
     def training_step(self, batch, batch_idx):
         mode = "train"
-        x, x_cat, x1, x1_cat, y, y_class, mask, _, _ = batch
-        x, x_cat, x1, x1_cat, y, y_class, mask = (
+        x, x_cat, y, mask, _, _ = batch
+        x, x_cat, y, mask = (
             torch.flatten(x, start_dim=0, end_dim=1),
             torch.flatten(x_cat, start_dim=0, end_dim=1),
-            torch.flatten(x1, start_dim=0, end_dim=1),
-            torch.flatten(x1_cat, start_dim=0, end_dim=1),
             torch.flatten(y, start_dim=0, end_dim=1),
-            torch.flatten(y_class, start_dim=0, end_dim=1),
             torch.flatten(mask, start_dim=0, end_dim=1),
         )
-        x, x1, y = (
+        x, y = (
             x.to(self.torch_dtype),
-            x1.to(self.torch_dtype),
             y.to(self.torch_dtype),
         )
         x_cat = x_cat.to(torch.long)
-        x1_cat = x1_cat.to(torch.long)
-        out = self.__pred(x, x_cat, x1, x1_cat, mode)
+        out = self.__pred(x, x_cat, mode)
 
-        loss = self.loss_fc(out, y_class)
-
-        # loss += self.bceloss(out2, top1_is_in_bools) * self.cfg.exp.bce_weight
-
+        out_masked = out[mask]
+        y_masked = y[mask]
+        loss = self.loss_fc(
+            out_masked[:, self.use_cols_index], y_masked[:, self.use_cols_index]
+        )
         self.log(
             f"{mode}_loss",
             loss.detach().item(),
@@ -915,28 +1138,26 @@ class LeapLightningModule(LightningModule):
 
     def validation_step(self, batch, batch_idx):
         mode = "valid"
-        x, x_cat, x1, x1_cat, y, y_class, mask, original_x, original_y = batch
-        x, x_cat, x1, x1_cat, y, y_class, mask, original_x, original_y = (
+        x, x_cat, y, mask, original_x, original_y = batch
+        x, x_cat, y, mask, original_x, original_y = (
             torch.flatten(x, start_dim=0, end_dim=1),
             torch.flatten(x_cat, start_dim=0, end_dim=1),
-            torch.flatten(x1, start_dim=0, end_dim=1),
-            torch.flatten(x1_cat, start_dim=0, end_dim=1),
             torch.flatten(y, start_dim=0, end_dim=1),
-            torch.flatten(y_class, start_dim=0, end_dim=1),
             torch.flatten(mask, start_dim=0, end_dim=1),
             torch.flatten(original_x, start_dim=0, end_dim=1),
             torch.flatten(original_y, start_dim=0, end_dim=1),
         )
-        x, x1, y = (
+        x, y = (
             x.to(self.torch_dtype),
-            x1.to(self.torch_dtype),
             y.to(self.torch_dtype),
         )
         x_cat = x_cat.to(torch.long)
-        x1_cat = x1_cat.to(torch.long)
-        out = self.__pred(x, x_cat, x1, x1_cat, mode)
-        loss = self.loss_fc(out, y_class)
-
+        out = self.__pred(x, x_cat, mode)
+        out_masked = out[mask]
+        y_masked = y[mask]
+        loss = self.loss_fc(
+            out_masked[:, self.use_cols_index], y_masked[:, self.use_cols_index]
+        )
         self.log(
             f"{mode}_loss/{self.valid_name}",
             loss.detach().item(),
@@ -945,10 +1166,9 @@ class LeapLightningModule(LightningModule):
             logger=True,
             prog_bar=True,
         )
-        self.valid_preds.append(
-            out.softmax(dim=1).detach().cpu().to(torch.float64).numpy()
-        )
-        self.valid_y_class.append(y_class.cpu().numpy())
+        self.valid_preds.append(out.cpu().to(torch.float64).numpy())
+        self.valid_labels.append(original_y.cpu().to(torch.float64).numpy())
+        self.valid_original_xs.append(original_x.cpu().to(torch.float64).numpy())
         return loss
 
     def predict_step(self, batch, batch_idx):
@@ -959,11 +1179,11 @@ class LeapLightningModule(LightningModule):
         out = self.__pred(x, x_cat, mode)
         return out
 
-    def __pred(self, x, x_cat, x1, x1_cat, mode: str) -> torch.Tensor:
+    def __pred(self, x, x_cat, mode: str) -> torch.Tensor:
         if (mode == "valid" or mode == "test") and (self.model_ema is not None):
-            out = self.model_ema.module(x, x_cat, x1, x1_cat)
+            out = self.model_ema.module(x, x_cat)
         else:
-            out = self.model(x, x_cat, x1, x1_cat)
+            out = self.model(x, x_cat)
         return out
 
     def on_after_backward(self):
@@ -972,40 +1192,28 @@ class LeapLightningModule(LightningModule):
 
     def on_validation_epoch_end(self):
         valid_preds = np.concatenate(self.valid_preds, axis=0).astype(np.float64)
-        valid_y_class = np.concatenate(self.valid_y_class, axis=0).astype(np.float64)
+        valid_labels = np.concatenate(self.valid_labels, axis=0).astype(np.float64)
+        valid_original_xs = np.concatenate(self.valid_original_xs, axis=0).astype(
+            np.float64
+        )
+        valid_preds = self.scaler.inv_scale_output(valid_preds, valid_original_xs)
 
-        # 閾値ごとの 1と予測した数と 1についての precision, recall を計算
-        thresholds = [0.5, 0.9, 0.99, 0.999, 0.9999, 0.99999]
-        for threshold in thresholds:
-            y_pred = (valid_preds[:, 0] > threshold).astype(np.int64)
-            # リコールと精度を計算
-            num_cand = np.sum(y_pred)
-            precision = precision_score(valid_y_class == 0, y_pred)
-            recall = recall_score(valid_y_class == 0, y_pred)
-            print(
-                f"Threshold: {threshold:.5f}, Num:{num_cand}, Precision: {precision:.5f}, Recall: {recall:.5f}"
-            )
-            self.log(
-                f"valid_precision_recall_{threshold:.5f}",
-                precision * recall,
-                on_step=False,
-                on_epoch=True,
-                logger=True,
-                prog_bar=True,
-            )
-        auc_score = roc_auc_score(valid_y_class == 0, valid_preds[:, 0])
-        print(f"AUC: {auc_score:.8f}")
+        r2_scores = r2_score(
+            valid_labels * self.weight_array,
+            valid_preds * self.weight_array,
+        )
+        print(f"{r2_scores=}")
         self.log(
-            "valid_auc",
-            auc_score,
+            f"valid_r2_score/{self.valid_name}",
+            r2_scores,
             on_step=False,
             on_epoch=True,
             logger=True,
             prog_bar=True,
         )
-
         self.valid_preds = []
-        self.valid_y_class = []
+        self.valid_labels = []
+        self.valid_original_xs = []
         gc.collect()
 
     def configure_optimizers(self):
@@ -1092,14 +1300,15 @@ class LeapLightningModule(LightningModule):
                     "frequency": self.cfg.exp.val_check_interval
                     if self.cfg.exp.val_check_interval
                     else 1,
-                    "monitor": f"valid_loss/{self.valid_name}",
+                    "monitor": f"valid_r2_score/{self.valid_name}",
                     "interval": "step" if self.cfg.exp.val_check_interval else "epoch",
                 },
             }
 
 
 def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
-    monitor = "valid_auc"
+    valid_name = get_valid_name(cfg)
+    monitor = f"valid_r2_score/{valid_name}"
     dm = LeapLightningDataModule(cfg)
 
     if cfg.exp.restart_ckpt_path:
@@ -1134,7 +1343,7 @@ def train(cfg: DictConfig, output_path: Path, pl_logger) -> None:
         precision=cfg.exp.precision,
         max_epochs=cfg.exp.max_epochs,
         max_steps=cfg.exp.max_epochs
-        * len(dm.train_file_paths)
+        * len(dm.train_dataset)
         // cfg.exp.train_batch_size
         // cfg.exp.accumulate_grad_batches,
         gradient_clip_val=cfg.exp.gradient_clip_val,
@@ -1182,62 +1391,98 @@ def predict_val2(cfg: DictConfig, output_path: Path) -> None:
     model = model_module.model
 
     dm = LeapLightningDataModule(cfg)
-    dataloader = dm.val_dataloader()
+    dataloader, val2_df = dm.val2_dataloader()
+    original_xs = []
     preds = []
     labels = []
     model = model.to("cuda")
     model.eval()
-    for x, x_cat, x1, x1_cat, _, y_class, _, _, _ in tqdm(dataloader):
-        x, x_cat, x1, x1_cat = (
+    for x, x_cat, _, _, original_x, original_y in tqdm(dataloader):
+        x, x_cat, original_x, original_y = (
             x.to("cuda"),
             x_cat.to("cuda"),
-            x1.to("cuda"),
-            x1_cat.to("cuda"),
+            original_x.to("cuda"),
+            original_y.to("cuda"),
         )
         x = torch.flatten(x, start_dim=0, end_dim=1)
         x_cat = torch.flatten(x_cat, start_dim=0, end_dim=1)
-        x1 = torch.flatten(x1, start_dim=0, end_dim=1)
-        x1_cat = torch.flatten(x1_cat, start_dim=0, end_dim=1)
+        original_x = torch.flatten(original_x, start_dim=0, end_dim=1)
+        original_y = torch.flatten(original_y, start_dim=0, end_dim=1)
         with torch.no_grad():
-            out = model(
-                x.to(torch_dtype),
-                x_cat.to(torch.long),
-                x1.to(torch_dtype),
-                x1_cat.to(torch.long),
-            ).softmax(dim=1)
+            out = model(x.to(torch_dtype), x_cat.to(torch.long))
 
+        original_xs.append(original_x.cpu().to(torch.float64))
         preds.append(out.cpu().to(torch.float64))
-        labels.append(y_class.flatten().cpu())
+        labels.append(original_y.cpu())
         if cfg.debug:
             break
 
     with utils.trace("save predict"):
-        preds = np.concatenate(preds, axis=0)
-        labels = np.concatenate(labels)
+        original_xs = np.concatenate(original_xs, axis=0)
+        preds = Scaler(cfg).inv_scale_output(np.concatenate(preds, axis=0), original_xs)
+        labels = np.concatenate(labels, axis=0)
+
+        original_xs_df = pd.DataFrame(
+            original_xs, columns=[i for i in range(original_xs.shape[1])]
+        ).reset_index()
+        original_xs_df.to_parquet(output_path / "val2_original_xs.parquet")
+        del original_xs_df
+        del original_xs
+        gc.collect()
 
         original_predict_df = pd.DataFrame(
             preds, columns=[i for i in range(preds.shape[1])]
         ).reset_index()
         original_predict_df.to_parquet(output_path / "val2_predict.parquet")
-        print(original_predict_df)
+        del original_predict_df
+        gc.collect()
 
-        original_label_df = pd.DataFrame(labels, columns=[0]).reset_index()
+        original_label_df = pd.DataFrame(
+            labels, columns=[i for i in range(labels.shape[1])]
+        ).reset_index()
         original_label_df.to_parquet(output_path / "val2_label.parquet")
-        print(original_label_df)
+        del original_label_df
+        gc.collect()
 
-        valid_preds = preds[:, 0]  # classの番号
-        valid_y_class = labels == 0
+    # weight (weight zero もあるのでかけておく)
+    ss_df = pl.read_csv(
+        "input/leap-atmospheric-physics-ai-climsim/sample_submission.csv", n_rows=1
+    )
+    weight_array = ss_df.select(
+        [x for x in ss_df.columns if x != "sample_id"]
+    ).to_numpy()[0]
+    predict_df = pd.DataFrame(
+        preds * weight_array, columns=[i for i in range(preds.shape[1])]
+    ).reset_index()
+    label_df = pd.DataFrame(
+        labels * weight_array, columns=[i for i in range(labels.shape[1])]
+    ).reset_index()
+    r2_scores = score(label_df, predict_df, "index", multioutput="raw_values")
+    r2_score_dict = {
+        col: r2 for col, r2 in dict(zip(cfg.cols.col_names, r2_scores)).items()
+    }
+    pickle.dump(r2_score_dict, open(output_path / "val2_r2_score_dict.pkl", "wb"))
+    r2_score = float(np.array([v for v in r2_score_dict.values()]).mean())
+    print(f"{r2_score=}")
+    wandb.log(
+        {
+            "r2_score/val2": r2_score,
+        }
+    )
+    del predict_df, label_df
+    gc.collect()
 
-        thresholds = [0.5, 0.7, 0.9, 0.99, 0.999, 0.9999, 0.99999]
-        for threshold in thresholds:
-            y_pred = (valid_preds > threshold).astype(np.int64)
-            # リコールと精度を計算
-            num_cand = np.sum(y_pred)
-            precision = precision_score(valid_y_class, y_pred)
-            recall = recall_score(valid_y_class, y_pred)
-            print(
-                f"Threshold: {threshold:.5f}, Num:{num_cand}, Precision: {precision:.5f}, Recall: {recall:.5f}"
-            )
+    # save
+    val2_df = pl.concat(
+        [
+            val2_df.select("sample_id"),
+            pl.from_numpy(preds * weight_array, schema=ss_df.columns[1:]),
+        ],
+        how="horizontal",
+    )
+    print(val2_df)
+    val2_df.write_parquet(output_path / "valid_pred.parquet")
+    del val2_df
 
 
 def predict_test(cfg: DictConfig, output_path: Path) -> None:
@@ -1253,32 +1498,66 @@ def predict_test(cfg: DictConfig, output_path: Path) -> None:
     model = model_module.model
 
     dm = LeapLightningDataModule(cfg)
-    dataloader = dm.test_dataloader()
+    dataloader, test_df = dm.test_dataloader()
+    original_xs = []
     preds = []
     model = model.to("cuda")
     model.eval()
-    for x, x_cat, x1, x1_cat, __loader__ in tqdm(dataloader):
-        x = x.to("cuda").to(torch_dtype)
-        x_cat = x_cat.to("cuda").to(torch.long)
-        x1 = x1.to("cuda").to(torch_dtype)
-        x1_cat = x1_cat.to("cuda").to(torch.long)
-
-        x = torch.flatten(x, start_dim=0, end_dim=1)
-        x_cat = torch.flatten(x_cat, start_dim=0, end_dim=1)
-        x1 = torch.flatten(x1, start_dim=0, end_dim=1)
-        x1_cat = torch.flatten(x1_cat, start_dim=0, end_dim=1)
+    for x, x_cat, original_x in tqdm(dataloader):
+        x = x.to("cuda")
+        x_cat = x_cat.to("cuda")
+        # webdatasetとは違い、batchでの読み出しではないのでflattenは必要ない
         with torch.no_grad():
-            out = model(x, x_cat, x1, x1_cat).softmax(dim=1)
+            out = model(x.to(torch_dtype), x_cat.to(torch.long))
+        original_xs.append(original_x.cpu().to(torch.float64).numpy())
         preds.append(out.detach().cpu().numpy())
 
-    preds = np.concatenate(preds, axis=0)
+    original_xs = np.concatenate(original_xs, axis=0)
+    preds = Scaler(cfg).inv_scale_output(np.concatenate(preds, axis=0), original_xs)
 
-    original_predict_df = pd.DataFrame(
-        preds, columns=[i for i in range(preds.shape[1])]
-    ).reset_index()
-    original_predict_df.to_parquet(output_path / "test_predict.parquet")
-    print(original_predict_df)
-    del original_predict_df
+    # load sample
+    sample_submission_df = pl.read_parquet(
+        cfg.exp.sample_submission_path,
+        n_rows=(None if cfg.debug is False else len(preds)),
+    )[: len(preds)]
+    preds *= sample_submission_df[:, 1:].to_numpy()
+
+    sample_submission_df = pl.concat(
+        [
+            sample_submission_df.select("sample_id"),
+            pl.from_numpy(preds, schema=sample_submission_df.columns[1:]),
+        ],
+        how="horizontal",
+    )
+
+    sample_submission_df.write_parquet(output_path / "submission.parquet")
+    print(sample_submission_df)
+
+
+def viz(cfg: DictConfig, output_dir: Path, exp_name: str):
+    import papermill as pm
+
+    output_notebook_path = str(output_dir / "result_viz.ipynb")
+    pm.execute_notebook(
+        cfg.exp.viz_notebook_path,
+        output_notebook_path,
+        parameters={
+            "config_dir": "experiments",
+            "exp_name": exp_name,
+        },
+    )
+    # htmlに変換してwandbにアップロード
+    os.system(
+        "jupyter nbconvert --to html --TagRemovePreprocessor.remove_input_tags hide "
+        + output_notebook_path
+    )
+    wandb.log(
+        {
+            "result_viz": wandb.Html(
+                open(output_notebook_path.replace(".ipynb", ".html"))
+            )
+        }
+    )
 
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
@@ -1295,7 +1574,7 @@ def main(cfg: DictConfig) -> None:
 
     pl_logger = WandbLogger(
         name=exp_name,
-        project="kaggle-leap-binary",
+        project="kaggle-leap2",
         mode="disabled" if cfg.debug else None,
     )
     pl_logger.log_hyperparams(cfg)
@@ -1308,6 +1587,8 @@ def main(cfg: DictConfig) -> None:
         predict_val2(cfg, output_path)
     if "test" in cfg.exp.modes:
         predict_test(cfg, output_path)
+    if "viz" in cfg.exp.modes:
+        viz(cfg, output_path, exp_name)
 
 
 if __name__ == "__main__":
