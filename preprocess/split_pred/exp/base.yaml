@@ -1,0 +1,40 @@
+seed: 7
+
+kami_pred_paths: [
+  'input/predict/kami-leap-pred2/kami_experiments_201_unet_multi_all_384_n2_submission.parquet',
+  'input/predict/kami-leap-pred2/kami_experiments_201_unet_multi_all_512_n3_submission.parquet',
+  'input/predict/kami-leap-pred2/kami_experiments_201_unet_multi_all_n3_restart2_submission.parquet',
+  'input/predict/kami-leap-pred2/kami_experiments_201_unet_multi_all_submission.parquet',
+  'input/predict/kami-leap-pred2/kami_experiments_204_diff_last_all_lr_submission.parquet',
+  'input/predict/kami-leap-pred2/kami_experiments_211_simple_split_head_all_cos_submission.parquet',
+  'input/predict/kami-leap-pred2/kami_experiments_217_fix_transformer_leak_all_cos_head64_n4_submission.parquet',
+  'input/predict/kami-leap-pred2/kami_experiments_217_fix_transformer_leak_all_cos_head64_submission.parquet',
+  'input/predict/kami-leap-pred2/kami_experiments_222_wo_transformer_all_submission.parquet'
+]
+kurupical_pred_paths: [
+  'input/predict/kurupical-leap-pred2/20240621215730_exp031_20files_1d_dims(64, 128, 256, 512)_7epochs_power2.5e-3',
+  'input/predict/kurupical-leap-pred2/20240626042548_exp031_20files_transformer_512x6_head32_lr1e-3',
+  'input/predict/kurupical-leap-pred2/20240626120414_exp031_20files_transformer_384x12_head32_lr1e-3',
+  'input/predict/kurupical-leap-pred2/20240703230157_exp042_70m_transformer_512x4_lr0.001_beta1',
+  'input/predict/kurupical-leap-pred2/20240705215850_exp042_70m_transformer_768x4_lr0.001_beta1',
+  'input/predict/kurupical-leap-pred2/20240706022848_exp042_70m_cnn64_smoothl1beta1_lr2.5e-3_beta0.01_wd0.05',
+]
+takoi_pred_dir: [
+  'input/predict/leap-takoi-pred3/ex123_pp.parquet',
+  'input/predict/leap-takoi-pred3/ex124_pp.parquet',
+  'input/predict/leap-takoi-pred3/ex130_pp.parquet',
+  'input/predict/leap-takoi-pred3/ex131_pp.parquet',
+  'input/predict/leap-takoi-pred3/ex133_pp.parquet',
+  'input/predict/leap-takoi-pred3/ex134_pp.parquet',
+  'input/predict/leap-takoi-pred3/ex135_pp.parquet',
+  'input/predict/leap-takoi-pred3/ex136_pp.parquet',
+  'input/predict/leap-takoi-pred3/ex138_pp.parquet',
+  'input/predict/leap-takoi-pred3/ex139_pp.parquet',
+  'input/predict/leap-takoi-pred3/ex141_pp.parquet',
+]
+valid_path: input/valid.parquet
+test_path: input/test.parquet
+
+output_dir: input/predict_split/
+
+n_data_for_eval: 636640 # 368*1730

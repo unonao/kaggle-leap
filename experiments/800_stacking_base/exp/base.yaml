@@ -1,0 +1,106 @@
+seed: 7
+
+modes: [train, valid, test]
+dataset_dir: input/predict_split
+scale_dir: output/preprocess/normalize_009_rate_feat/bolton
+sample_submission_path: input/sample_submission.parquet
+viz_notebook_path: notebook/result_viz_004.ipynb
+tmelt_tice_dir: output/preprocess/tmelt_tice/001
+pred_checkpoint_path: null
+restart_ckpt_path: null
+
+data_names: [
+  #'20240621215730_exp031_20files_1d_dims(64, 128, 256, 512)_7epochs_power2.5e-3',
+  20240626042548_exp031_20files_transformer_512x6_head32_lr1e-3,
+  20240626120414_exp031_20files_transformer_384x12_head32_lr1e-3,
+  20240703230157_exp042_70m_transformer_512x4_lr0.001_beta1,
+  20240705215850_exp042_70m_transformer_768x4_lr0.001_beta1,
+  20240706022848_exp042_70m_cnn64_smoothl1beta1_lr2.5e-3_beta0.01_wd0.05,
+  ex123,
+  ex124,
+  ex130,
+  ex131,
+  ex133,
+  ex134,
+  ex135,
+  ex136,
+  ex138,
+  ex139,
+  ex141,
+  kami_experiments_201_unet_multi_all,
+  kami_experiments_201_unet_multi_all_384_n2,
+  kami_experiments_201_unet_multi_all_512_n3,
+  kami_experiments_201_unet_multi_all_n3_restart2,
+  kami_experiments_204_diff_last_all_lr,
+  kami_experiments_211_simple_split_head_all_cos,
+  kami_experiments_217_fix_transformer_leak_all_cos_head64,
+  kami_experiments_217_fix_transformer_leak_all_cos_head64_n4,
+  kami_experiments_222_wo_transformer_all,
+]
+
+
+eps: 1e-60
+outlier_std_rate: 40
+
+model:
+  hidden_dims: [256]
+
+
+# Training
+n_fold: 5
+max_epochs: 14
+early_stopping_patience: 3
+num_workers: 8
+train_batch_size: 1
+valid_batch_size: 1
+accumulate_grad_batches: 4
+
+
+scheduler:
+  name: CosineAnnealingWarmRestarts
+  use_one_epoch_warmup: True
+optimizer: 
+  name: Adan
+  lr: 1e-3
+  weight_decay: 0.02
+  eps: 1e-8
+  opt_betas: [0.98, 0.92, 0.99]
+  max_grad_norm: 0.0
+  no_prox: False
+
+
+# trainer
+accelerator: auto
+precision: "16-mixed" # https://lightning.ai/docs/pytorch/stable/common/trainer.html#precision
+gradient_clip_val: 1.0
+resume_ckpt_path: null
+val_check_interval: null # 学習データ量増やしたら設定しておくと良さそう
+val_check_warmup: 5000
+
+
+
+
+fill_target: [
+  ptend_q0002_12,
+  ptend_q0002_13,
+  ptend_q0002_14,
+  ptend_q0002_15,
+  ptend_q0002_16,
+  ptend_q0002_17,
+  ptend_q0002_18,
+  ptend_q0002_19,
+  ptend_q0002_20,
+  ptend_q0002_21,
+  ptend_q0002_22,
+  ptend_q0002_23,
+  ptend_q0002_24,
+  ptend_q0002_25,
+  ptend_q0002_26,
+  ptend_q0002_27, # ptend_q0002_27 0.9515178363448382
+  ptend_q0002_28, # ptend_q0002_28 0.9655142812325087
+]
+
+unuse_cols_list:
+  - ${cols.weight_zero_list}
+  - ${exp.fill_target}
+
