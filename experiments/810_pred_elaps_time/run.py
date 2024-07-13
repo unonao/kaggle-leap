@@ -965,20 +965,61 @@ def save_year(cfg, output_path):
                     (pl.mean("pred").over(["no_year_timestamp", "location"])).alias(
                         "pred_mean"
                     ),
+                    (
+                        pl.max("pred").over(["no_year_timestamp", "location"])
+                        - pl.min("pred").over(["no_year_timestamp", "location"])
+                    ).alias("pred_diff"),
                 ]
             )
             .with_columns(
-                pl.when(pl.col("is_duplicated") == False)  # noqa: E712
-                .then(pl.lit(1))
+                pl.when(pl.col("is_duplicated") == False)
+                .then(pl.lit(0))
                 .when(pl.col("pred") > pl.col("pred_mean"))
                 .then(pl.lit(1))
                 .otherwise(pl.lit(0))
-                .alias("is_first_year")
+                .alias("is_second_year")
+            )
+            .with_columns(
+                pl.when((pl.col("is_second_year") == 0) & (pl.col("is_duplicated")))
+                .then(pl.lit(9))
+                .when(
+                    (pl.col("is_second_year") == 0)
+                    & (~pl.col("is_duplicated"))
+                    & (pl.col("month") >= 3)
+                )
+                .then(pl.lit(9))
+                .when(
+                    (pl.col("is_second_year") == 0)
+                    & (~pl.col("is_duplicated"))
+                    & (pl.col("month") < 3)
+                )
+                .then(pl.lit(10))
+                .when(
+                    (pl.col("is_second_year") == 1)
+                    & (pl.col("is_duplicated"))
+                    & (pl.col("month") >= 3)
+                )
+                .then(pl.lit(10))
+                .otherwise(pl.lit(11))
+                .alias("year")
+            )
+            .with_columns(
+                (
+                    pl.datetime(
+                        pl.col("year").cast(pl.Int64),
+                        pl.col("month"),
+                        pl.col("day"),
+                        0,
+                        0,
+                        0,
+                    )
+                    + pl.duration(seconds=pl.col("seconds"))
+                ).alias("timestamp"),
             )
             .drop(["pred_mean", "no_year_timestamp"])
         )
         .with_row_index("original_index")
-        .sort(["is_first_year", "month", "day", "seconds", "location"])
+        .sort(["timestamp", "location"])
         .with_row_index("sort_index")
     ).sort("original_index")
 

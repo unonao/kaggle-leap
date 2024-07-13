@@ -35,7 +35,10 @@ gcs_base_dir: kami
 gcloud storage cp -r output/experiments/225_smoothl1_loss_vast/all_005  gs://kaggle-leap/experiments/225_smoothl1_loss_vast
 
 ## command
-python experiments/704_diff_top3/run.py exp=all
-python experiments/750_sim12_top3/run.py exp=all      
-python experiments/225_smoothl1_loss_vast/run.py exp=all4
-python experiments/612_sim6_input3_vast/run.py exp=all001
+
+- python experiments/502_latlon_smoothl1_infer_new/run.py  exp=all_001
+    - latlonを推論 (502_latlon_smoothl1_vast/all_001)
+    - 潜伏サブ
+- python experiments/225_smoothl1_loss/run.py exp=all_005 'exp.modes=[valid,test]'
+- 225_smoothl1_loss/all_005, 222_wo_transformer/all_004 をアップロード
+
