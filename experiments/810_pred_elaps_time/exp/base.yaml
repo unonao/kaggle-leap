@@ -1,0 +1,105 @@
+seed: 7
+
+modes: [train, test, save]
+test_new_path: input/test.parquet
+test_old_path: input/test_old.parquet
+
+scale_dir: output/preprocess/normalize_009_rate_feat/bolton
+sample_submission_path: input/sample_submission.parquet
+viz_notebook_path: notebook/result_viz_004.ipynb
+tmelt_tice_dir: output/preprocess/tmelt_tice/001
+pred_checkpoint_path: null
+restart_ckpt_path: null
+
+eps: 1e-60
+outlier_std_rate: 40
+
+model:
+  same_height_hidden_sizes: [256, 64, 16]
+  use_input_layer_norm: False
+  use_output_layer_norm: True
+  embedding_dim: 64
+  categorical_embedding_dim: 64
+  layers: 2
+
+
+# Training
+n_fold: 5
+max_epochs: 14
+early_stopping_patience: 3
+num_workers: 8
+train_batch_size: 1
+valid_batch_size: 1
+accumulate_grad_batches: 4
+
+
+scheduler:
+  name: CosineAnnealingWarmRestarts
+  use_one_epoch_warmup: True
+optimizer: 
+  name: Adan
+  lr: 1e-3
+  weight_decay: 0.02
+  eps: 1e-8
+  opt_betas: [0.98, 0.92, 0.99]
+  max_grad_norm: 0.0
+  no_prox: False
+
+# trainer
+accelerator: auto
+precision: "16-mixed" # https://lightning.ai/docs/pytorch/stable/common/trainer.html#precision
+gradient_clip_val: 1.0
+resume_ckpt_path: null
+val_check_interval: null # 学習データ量増やしたら設定しておくと良さそう
+val_check_warmup: 5000
+
+fill_target: [
+  ptend_q0002_12,
+  ptend_q0002_13,
+  ptend_q0002_14,
+  ptend_q0002_15,
+  ptend_q0002_16,
+  ptend_q0002_17,
+  ptend_q0002_18,
+  ptend_q0002_19,
+  ptend_q0002_20,
+  ptend_q0002_21,
+  ptend_q0002_22,
+  ptend_q0002_23,
+  ptend_q0002_24,
+  ptend_q0002_25,
+  ptend_q0002_26,
+  ptend_q0002_27, # ptend_q0002_27 0.9515178363448382
+  ptend_q0002_28, # ptend_q0002_28 0.9655142812325087
+]
+
+unuse_cols_list:
+  - ${cols.weight_zero_list}
+  - ${exp.fill_target}
+
+
+# feature
+rh_method: Bolton
+seq_feats: [
+  relative_humidity_all,
+  cloud_snow_rate,
+  cloud_water,
+  q2q3_mean,
+  uv_mean,
+  pbuf_mean,
+  t_diff,
+  q1_diff,
+  q2_diff,
+  q3_diff,
+  u_diff,
+  v_diff,
+  ozone_diff,
+  ch4_diff,
+  n2o_diff,
+  q2q3_mean_diff,
+  uv_mean_diff,
+  pbuf_mean_diff,
+]
+scalar_feats: [
+]
+
