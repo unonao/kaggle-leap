@@ -32,7 +32,7 @@ gcs_bucket: kaggle-leap
 gcs_base_dir: kami
 ```
 
-gcloud storage cp -r output/experiments/222_wo_transformer_vast_single gs://kaggle-leap/experiments
+gcloud storage cp -r output/experiments/225_smoothl1_loss_vast/all_005  gs://kaggle-leap/experiments/225_smoothl1_loss_vast
 
 ## command
 python experiments/704_diff_top3/run.py exp=all
